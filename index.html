@@ -354,7 +354,7 @@
 
       let msgHTML = `⭕ 正解！ (+${basePoints}点)<br><small>反応: ${responseTime} ms (難易度ボーナス x${difficultyMultiplier.toFixed(2)})</small>`;
       
-      if (responseTime <= 800) {
+     if (responseTime <= 1000) {
         combo++;
         let speedMultiplier = Math.min(1.0 + (combo * 0.2), 3.0);
         let finalPoints = Math.floor(basePoints * speedMultiplier);
@@ -455,13 +455,30 @@
     updateHistoryUI(); 
     
     let rankName = ""; let rankColor = ""; let rankDesc = "";
-    if (score < 6000) { rankName = "🥉 初級者 (Beginner)"; rankColor = "#cd7f32"; rankDesc = "近い音程の距離感が掴めてきたレベル"; }
-    else if (score < 12000) { rankName = "🥈 中級者 (Intermediate)"; rankColor = "#bdc3c7"; rankDesc = "1オクターブ内の跳躍に迷いがなくなってきたレベル"; }
-    else if (score < 20000) { rankName = "🏅 上級者 (Advanced)"; rankColor = "#3498db"; rankDesc = "拡張レンジでの跳躍にも素早く反応できる、瞬時の判断力が身についてきた証！"; }
-    else if (score < 35000) { rankName = "🥇 玄人 (Expert)"; rankColor = "#f1c40f"; rankDesc = "基準のドに対する相対音感が強固になり、ほぼノータイムで音が取れるレベル"; }
-    else if (score < 50000) { rankName = "👑 達人 (Master)"; rankColor = "#e67e22"; rankDesc = "考えなくても指が動く、完璧な相対音感と反射神経の持ち主"; }
-    else { rankName = "✨ 神の耳 (Grandmaster)"; rankColor = "#ff4500"; rankDesc = "システムと完全に同化。限界スピードでの連続正解を維持できる究極の耳！"; }
-
+    if (score < 6000) { 
+      rankName = "🥉 ビギナー"; rankColor = "#cd7f32"; 
+      rankDesc = "近い音程の距離感が掴めてきたレベル"; 
+    }
+    else if (score < 12000) { 
+      rankName = "🥈 レギュラー"; rankColor = "#bdc3c7"; 
+      rankDesc = "1オクターブ内の跳躍に迷いがなくなってきたレベル"; 
+    }
+    else if (score < 20000) { 
+      rankName = "🏅 ベテラン"; rankColor = "#3498db"; 
+      rankDesc = "拡張レンジでの跳躍にも素早く反応できる、瞬時の判断力が身についてきた証！"; 
+    }
+    else if (score < 35000) { 
+      rankName = "🥇 エキスパート"; rankColor = "#f1c40f"; 
+      rankDesc = "基準のドに対する相対音感が強固になり、ほぼノータイムで音が取れるレベル"; 
+    }
+    else if (score < 50000) { 
+      rankName = "👑 マスター"; rankColor = "#e67e22"; 
+      rankDesc = "考えなくても指が動く、完璧な相対音感と反射神経の持ち主"; 
+    }
+    else { 
+      rankName = "✨ 神の耳"; rankColor = "#ff4500"; 
+      rankDesc = "システムと完全に同化。限界スピードでの連続正解を維持できる究極の耳！"; 
+    }
     let endMsg = `🏁 タイムアップ！<br>最終スコア: ${score}点 (最高連続: ${streak}回)<br>`;
     endMsg += `<div class="rank-display" style="color:${rankColor};">${rankName}<br><span style="font-size:0.55em; font-weight:normal; color:#ecf0f1;">${rankDesc}</span></div>`;
     
