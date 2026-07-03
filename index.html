@@ -1,517 +1,324 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Transposing Ear Training - V12</title>
-<style>
-  body { font-family: sans-serif; text-align: center; margin: 0; padding: 20px 10px; background-color: #2c3e50; color: #ecf0f1; transition: background-color 0.8s ease; touch-action: manipulation; }
-  #app-container { display: flex; max-width: 1100px; margin: 0 auto; gap: 15px; align-items: stretch; justify-content: center; flex-wrap: wrap; }
-
-  
-  #history-sidebar, #analytics-sidebar { flex: 1; min-width: 250px; background: rgba(0,0,0,0.3); padding: 15px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); font-size: 0.9em; box-sizing: border-box; }
-  #history-sidebar { max-height: 600px; overflow-y: auto; text-align: left; }
-  #history-sidebar h3 { color: #3498db; margin-top: 0; text-align: center; border-bottom: 2px solid rgba(255,255,255,0.1); padding-bottom: 10px;}
-  .history-item { background: rgba(255,255,255,0.1); padding: 8px; border-radius: 5px; margin-bottom: 8px; border-left: 4px solid #1abc9c; }
-  
-  #main-game-board { flex: 2.5; min-width: 300px; background: rgba(0,0,0,0.3); padding: 20px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); box-sizing: border-box; backdrop-filter: blur(5px); }
-  
-  #analytics-sidebar { text-align: center; }
-  #combo-title { font-size: 1.1em; color: #f1c40f; margin-bottom: 5px; font-weight: bold;}
-  #combo-count-large { font-size: 3.5em; color: #f1c40f; text-shadow: 0 0 10px #f1c40f; font-weight: 900; margin: 5px 0; }
-  
-  .analytics-box { background: rgba(0,0,0,0.2); padding: 10px; border-radius: 8px; margin-top: 20px; text-align: left;}
-  .analytics-box h4 { margin: 0 0 10px 0; color: #e74c3c; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px; font-size: 1em;}
-  .weak-note-item { display: flex; justify-content: space-between; font-size: 0.85em; margin-bottom: 5px; background: rgba(231, 76, 60, 0.2); padding: 5px; border-radius: 3px;}
-
-  .header-section { display: flex; justify-content: center; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
-  .header-section h2 { margin: 0; width: 100%; margin-bottom: 10px;}
-  select.game-setting { padding: 8px; font-size: 0.9em; border-radius: 5px; border: 2px solid #1abc9c; background-color: #ecf0f1; color: #2c3e50; font-weight: bold; cursor: pointer; outline: none; }
-  
-  .stats-bar { display: flex; justify-content: space-around; font-size: 1.1em; font-weight: bold; margin-bottom: 10px; background: rgba(26, 188, 156, 0.8); color: white; padding: 10px; border-radius: 8px; flex-wrap: wrap; gap: 5px; }
-  .sub-stats-bar { display: flex; justify-content: center; gap: 20px; font-size: 0.9em; margin-bottom: 10px; color: #ecf0f1; }
-  
-  #difficulty-badge { background: #e67e22; color: #fff; padding: 3px 8px; border-radius: 12px; font-weight: bold; font-size: 0.85em; margin-bottom: 10px; display: inline-block;}
-
-  .rule-box { background: rgba(255, 255, 255, 0.1); padding: 10px; border-radius: 5px; font-size: 0.9em; margin-bottom: 15px; text-align: left; line-height: 1.5; }
-  .rule-box strong { color: #f1c40f; }
-
-  .keys { display: flex; justify-content: center; flex-wrap: wrap; margin-top: 15px; gap: 2px; padding: 0 5px; }
-  .key { 
-    position: relative; width: 45px; height: 150px; 
-    background-color: #fff; color: #2c3e50; 
-    border: 1px solid #bdc3c7; border-radius: 0 0 5px 5px; 
-    cursor: pointer; font-weight: bold; 
-    display: flex; flex-direction: column; justify-content: flex-end; align-items: center;
-    padding-bottom: 10px; box-shadow: 0 4px rgba(0,0,0,0.5); transition: background-color 0.1s, transform 0.1s; 
-    user-select: none; flex-grow: 1; max-width: 60px;
-    opacity: 0.3; pointer-events: none; display: none; 
-  }
-  .key.visible-key { display: flex; }
-  .key.active-key { opacity: 1; pointer-events: auto; }
-  
-  .key:active, .key.pressed { background-color: #ecf0f1; transform: translateY(4px); box-shadow: 0 0 #95a5a6; }
-  .key.correct-highlight { background-color: #2ecc71 !important; color: white !important; opacity: 1 !important;}
-  
-  .key.has-black::after {
-    content: ''; position: absolute; top: 0; right: -12px; 
-    width: 22px; height: 60%; background-color: #2c3e50;
-    border-radius: 0 0 4px 4px; z-index: 10; box-shadow: 1px 1px 3px rgba(0,0,0,0.5); pointer-events: none;
-  }
-  .key:not(.active-key).has-black::after { opacity: 0.3; }
-  .key small { font-size: 0.7em; color: #7f8c8d; margin-bottom: 3px; }
-
-  @media (max-width: 900px) {
-    #app-container { flex-direction: column; }
-    #history-sidebar { order: 3; max-height: 250px; }
-    #main-game-board { order: 1; }
-    #analytics-sidebar { order: 2; display: flex; justify-content: space-between; align-items: stretch; text-align: left;}
-    .analytics-box { margin-top: 0; flex: 1; margin-left: 15px; }
-    #combo-container { flex: 1; text-align: center; }
-    .key { width: 14vw; height: 120px; font-size: 0.85em; }
-    .key.has-black::after { width: 4vw; right: -2vw; }
-  }
-
-  #game-message-area { margin-top: 15px; font-size: 1.1em; font-weight: bold; min-height: 60px; line-height: 1.4; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px; }
-  button.action-btn { padding: 15px 30px; font-size: 1.2em; background-color: #e74c3c; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; box-shadow: 0 4px #c0392b; touch-action: manipulation; margin-bottom: 10px; }
-  .flash-green { background-color: #27ae60 !important; }
-  .flash-red { background-color: #c0392b !important; }
-  #countdown { font-size: 4em; font-weight: 900; color: white; display: none; margin-top: 15px; min-height: 60px;}
-  .rank-display { font-size: 1.4em; font-weight: bold; margin: 10px 0; padding: 10px; border-radius: 8px; background: rgba(0,0,0,0.3); }
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sax Ear Trainer</title>
+  <style>
+    body {
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+      background-color: #2c3e50;
+      color: #ecf0f1;
+      text-align: center;
+      padding: 20px;
+      margin: 0;
+    }
+    h1 { color: #3498db; }
+    #game-info {
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+      font-size: 1.2rem;
+      margin-bottom: 10px;
+    }
+    #combo-message {
+      font-size: 1.5rem;
+      font-weight: bold;
+      color: #f1c40f;
+      height: 30px;
+    }
+    #message {
+      font-size: 1.2rem;
+      margin: 20px 0;
+      height: 30px;
+    }
+    .key-container {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    .key-btn {
+      background-color: #34495e;
+      color: #fff;
+      border: 2px solid #2c3e50;
+      border-radius: 8px;
+      padding: 15px 20px;
+      font-size: 1.2rem;
+      cursor: pointer;
+      min-width: 60px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+      transition: background-color 0.1s, transform 0.1s;
+    }
+    .key-btn:active, .key-btn.active {
+      background-color: #e74c3c;
+      transform: translateY(2px);
+      box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+    }
+    #start-btn {
+      background-color: #2ecc71;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 15px 40px;
+      font-size: 1.5rem;
+      cursor: pointer;
+      margin-top: 20px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    }
+    #start-btn:active {
+      transform: translateY(2px);
+    }
+    #result-area {
+      margin-top: 30px;
+      background-color: #34495e;
+      padding: 20px;
+      border-radius: 10px;
+      display: none;
+    }
+    #rank-title { font-size: 2rem; font-weight: bold; margin: 10px 0; }
+    #rank-desc { font-size: 1.1rem; }
+  </style>
 </head>
 <body>
 
-<div id="app-container">
-  <div id="history-sidebar">
-    <h3>📈 過去のスコア履歴</h3>
-    <div id="history-list"></div>
-  </div>
-
-  <div id="main-game-board">
-    <div class="header-section">
-      <h2>🎵 移調楽器 音感トレ <small>(A=442)</small></h2>
-      <select id="instrument-select" class="game-setting">
-        <option value="C">C管 (ピアノ等)</option>
-        <option value="Bb" selected>B♭管 (サックス等)</option>
-        <option value="Eb">E♭管 (アルト等)</option>
-        <option value="F">F管 (ホルン等)</option>
-      </select>
-      <select id="keyboard-mode-select" class="game-setting" onchange="updateKeyboardUI()">
-        <option value="pc" selected>鍵盤: PC (1オクターブ)</option>
-        <option value="mobile">鍵盤: スマホ (拡張レンジ)</option>
-      </select>
-    </div>
-    
-    <div class="stats-bar">
-      <div>⏳ 残り: <span id="time">30</span>秒</div>
-      <div>💯 スコア: <span id="score">0</span></div>
-    </div>
-    <div class="sub-stats-bar">
-      <div>🎯 連続正解: <span id="streak">0</span> 回</div>
-      <div style="color:#f1c40f;">🏁 段階2解放目標: 30,000点</div>
-    </div>
-    <div id="difficulty-badge">開放音数: 4</div>
-
-    <div class="rule-box">
-      ・<strong>3連続正解</strong>で開放音が<strong>2つ</strong>増え、ミスすると<strong>1つ</strong>減ります。<br>
-      ・間違えた時は<strong>正解の鍵盤が緑色</strong>に光ります。<br>
-      ・30,000点を超えると次のトレーニング(段階2)への実力十分！
-    </div>
-
-    <button id="start-btn" class="action-btn" onpointerdown="event.preventDefault(); startSequence()">ゲームスタート！</button>
-    <div id="countdown"></div>
-    <div id="game-message-area">楽器とモードを選んでスタート！</div>
-
-    <div class="keys">
-      <div class="key has-black" id="note-LowA" onpointerdown="event.preventDefault(); checkAnswer('LowA')"><small>(Z)</small>ラ↓</div>
-      <div class="key" id="note-LowB" onpointerdown="event.preventDefault(); checkAnswer('LowB')"><small>(X)</small>シ↓</div>
-      
-      <div class="key has-black" id="note-C" onpointerdown="event.preventDefault(); checkAnswer('C')"><small>(A)</small>ド</div>
-      <div class="key has-black" id="note-D" onpointerdown="event.preventDefault(); checkAnswer('D')"><small>(S)</small>レ</div>
-      <div class="key" id="note-E" onpointerdown="event.preventDefault(); checkAnswer('E')"><small>(D)</small>ミ</div>
-      <div class="key has-black" id="note-F" onpointerdown="event.preventDefault(); checkAnswer('F')"><small>(F)</small>ファ</div>
-      <div class="key has-black" id="note-G" onpointerdown="event.preventDefault(); checkAnswer('G')"><small>(J)</small>ソ</div>
-      <div class="key has-black" id="note-A" onpointerdown="event.preventDefault(); checkAnswer('A')"><small>(K)</small>ラ</div>
-      <div class="key" id="note-B" onpointerdown="event.preventDefault(); checkAnswer('B')"><small>(L)</small>シ</div>
-      <div class="key has-black" id="note-HighC" onpointerdown="event.preventDefault(); checkAnswer('HighC')"><small>(;)</small>ド↑</div>
-      
-      <div class="key has-black" id="note-HighD" onpointerdown="event.preventDefault(); checkAnswer('HighD')"><small>(Q)</small>レ↑</div>
-      <div class="key" id="note-HighE" onpointerdown="event.preventDefault(); checkAnswer('HighE')"><small>(W)</small>ミ↑</div>
-    </div>
-  </div>
-
-  <div id="analytics-sidebar">
-    <div id="combo-container">
-      <div id="combo-title">🔥 COMBO</div>
-      <div id="combo-count-large">0</div>
-      <div id="combo-message" style="color:#f1c40f; font-size:0.9em; min-height: 20px;"></div>
-    </div>
-    
-    <div class="analytics-box">
-      <h4>🚨 苦手な音ワースト3</h4>
-      <div id="weak-notes-list">
-        <div style="font-size:0.8em; color:#bdc3c7;">データが貯まると表示されます</div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<script>
-  let audioCtx;
-  const MASTER_A = 442.00;
-  const baseFreqs = {
-    'C':  MASTER_A * Math.pow(2, -9/12),
-    'Bb': MASTER_A * Math.pow(2, -11/12), 
-    'Eb': MASTER_A * Math.pow(2, -6/12), 
-    'F':  MASTER_A * Math.pow(2, -4/12)   
-  };
-
-  const semitoneOffsets = { 
-    'LowA': -3, 'LowB': -1,
-    'C': 0, 'D': 2, 'E': 4, 'F': 5, 'G': 7, 'A': 9, 'B': 11, 
-    'HighC': 12, 'HighD': 14, 'HighE': 16 
-  };
-  const allNoteKeys = Object.keys(semitoneOffsets);
+  <h1>Sax Ear Trainer</h1>
   
+  <div id="game-info">
+    <div>⏳ 残り時間: <span id="time-display">60</span>秒</div>
+    <div>🎵 スコア: <span id="score-display">0</span>点</div>
+  </div>
   
-  const noteSequencePC = ['C', 'D', 'E', 'F', 'G', 'A', 'B', 'HighC'];
-  const noteSequenceMobile = ['C', 'D', 'E', 'F', 'G', 'A', 'B', 'HighC', 'LowB', 'HighD', 'LowA', 'HighE'];
+  <div id="combo-message"></div>
+  <div id="message">スタートボタンを押して開始！</div>
 
-  let activeNoteSequence = noteSequencePC;
-  let currentNoteCount = 4; // 初期状態は4音（ド〜ファ）
-  let currentAvailableNotes = [];
+  <button id="start-btn" onclick="startGame()">スタート</button>
 
-  let noteStats = JSON.parse(localStorage.getItem('saxEarTrainStats')) || {};
-  allNoteKeys.forEach(k => { if(!noteStats[k]) noteStats[k] = { attempts: 0, correct: 0, totalTime: 0 }; });
-  let scoreHistory = JSON.parse(localStorage.getItem('saxEarTrainHistory')) || [];
+  <div class="key-container" id="keys-container" style="display: none;">
+    <button class="key-btn" onclick="handleInput('A')" id="btn-A">A (ド)</button>
+    <button class="key-btn" onclick="handleInput('S')" id="btn-S">S (レ)</button>
+    <button class="key-btn" onclick="handleInput('D')" id="btn-D">D (ミ)</button>
+    <button class="key-btn" onclick="handleInput('F')" id="btn-F">F (ファ)</button>
+    <button class="key-btn" onclick="handleInput('J')" id="btn-J">J (ソ)</button>
+    <button class="key-btn" onclick="handleInput('K')" id="btn-K">K (ラ)</button>
+    <button class="key-btn" onclick="handleInput('L')" id="btn-L">L (シ)</button>
+    <button class="key-btn" onclick="handleInput(';')" id="btn-;">; (ド↑)</button>
+  </div>
 
-  let currentQuestionNote = ''; let questionStartTime = 0; 
-  let isPlayingGame = false; let isWaitingForAnswer = false; let isCountingDown = false; 
-  let score = 0; let timeLeft = 30; let combo = 0; let streak = 0; let timerInterval;
-  const TARGET_SCORE = 30000; 
+  <div id="result-area">
+    <h2>ゲーム終了！</h2>
+    <p>最終スコア: <span id="final-score" style="font-size:1.5rem; font-weight:bold;">0</span> 点</p>
+    <div id="rank-title"></div>
+    <div id="rank-desc"></div>
+    <button id="start-btn" onclick="location.reload()" style="font-size:1rem; padding:10px 20px; margin-top:15px;">もう一度プレイ</button>
+  </div>
 
-  const stageColors = ['#2c3e50', '#16a085', '#8e44ad', '#d35400', '#c0392b'];
-
-  updateHistoryUI(); updateAnalyticsUI(); updateKeyboardUI();
-
-  function getFrequency(noteName) {
-    const instrument = document.getElementById('instrument-select').value;
-    return baseFreqs[instrument] * Math.pow(2, semitoneOffsets[noteName] / 12);
-  }
-
-  function initAudio() {
-    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    if (audioCtx.state === 'suspended') audioCtx.resume();
-  }
-
-  function playTone(frequency, duration, type = 'triangle', time = null) {
-    const osc = audioCtx.createOscillator(); const gainNode = audioCtx.createGain();
-    osc.type = type; osc.frequency.value = frequency;
-    osc.connect(gainNode); gainNode.connect(audioCtx.destination);
-    const startTime = time !== null ? time : audioCtx.currentTime;
-    osc.start(startTime);
-    gainNode.gain.setValueAtTime(0, startTime);
-    gainNode.gain.linearRampToValueAtTime(0.3, startTime + 0.05);
-    gainNode.gain.exponentialRampToValueAtTime(0.00001, startTime + duration);
-    osc.stop(startTime + duration);
-  }
-
-  function playCountdownSequence(startTime) {
-    const beepFreq = MASTER_A * 2; const whistleFreq = MASTER_A * Math.pow(2, 22/12);
-    playTone(beepFreq, 0.1, 'sine', startTime);         
-    playTone(beepFreq, 0.1, 'sine', startTime + 1.0);   
-    playTone(beepFreq, 0.1, 'sine', startTime + 2.0);   
-    playTone(whistleFreq, 0.3, 'sine', startTime + 3.0); 
-    playTone(whistleFreq, 0.1, 'sine', startTime + 3.15); 
-  }
-
-  function playCorrectSE() { playTone(MASTER_A * 2, 0.2, 'sine'); setTimeout(() => playTone(MASTER_A * Math.pow(2, 7/12), 0.3, 'sine'), 100); }
-  function playIncorrectSE() { playTone(MASTER_A / 4, 0.4, 'sawtooth'); }
-
-  function updateDifficulty() {
-    const mode = document.getElementById('keyboard-mode-select').value;
-    activeNoteSequence = (mode === 'pc') ? noteSequencePC : noteSequenceMobile;
+  <script>
+    // --- 状態管理 ---
+    let score = 0;
+    let combo = 0;
+    let timeLeft = 60;
+    let timerInterval;
+    let isPlaying = false;
+    let startTime = 0;
+    let currentNote = null;
+    let basePoints = 100;
     
-    if (currentNoteCount > activeNoteSequence.length) currentNoteCount = activeNoteSequence.length;
-    currentAvailableNotes = activeNoteSequence.slice(0, currentNoteCount);
-    
-    document.getElementById('difficulty-badge').innerText = `開放音数: ${currentNoteCount} / ${activeNoteSequence.length}`;
-    
-    document.querySelectorAll('.key').forEach(el => {
-      const noteId = el.id.replace('note-', '');
-      if (activeNoteSequence.includes(noteId)) {
-        el.classList.add('visible-key');
+    // Web Audio API
+    let audioCtx = null;
+
+    // 音階データ（Cメジャースケール）
+    const noteData = {
+      'A': { name: 'ド', freq: 261.63 },
+      'S': { name: 'レ', freq: 293.66 },
+      'D': { name: 'ミ', freq: 329.63 },
+      'F': { name: 'ファ', freq: 349.23 },
+      'J': { name: 'ソ', freq: 392.00 },
+      'K': { name: 'ラ', freq: 440.00 },
+      'L': { name: 'シ', freq: 493.88 },
+      ';': { name: 'ド↑', freq: 523.25 }
+    };
+    const noteKeys = Object.keys(noteData);
+
+    // --- 音を鳴らす関数 ---
+    function playTone(freq) {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+      
+      osc.type = 'sine'; // サックスに近い音色にする場合は後々波形を変えられます
+      osc.frequency.value = freq;
+      
+      osc.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+      
+      osc.start();
+      gainNode.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + 1);
+      osc.stop(audioCtx.currentTime + 1);
+    }
+
+    // --- ゲーム開始 ---
+    function startGame() {
+      if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+      
+      score = 0;
+      combo = 0;
+      timeLeft = 60;
+      isPlaying = true;
+      
+      document.getElementById('start-btn').style.display = 'none';
+      document.getElementById('keys-container').style.display = 'flex';
+      document.getElementById('result-area').style.display = 'none';
+      
+      updateDisplay();
+      
+      timerInterval = setInterval(() => {
+        timeLeft--;
+        updateDisplay();
+        if (timeLeft <= 0) endGame();
+      }, 1000);
+      
+      nextNote();
+    }
+
+    // --- 次の音を出題 ---
+    function nextNote() {
+      if (!isPlaying) return;
+      const randomIdx = Math.floor(Math.random() * noteKeys.length);
+      currentNote = noteKeys[randomIdx];
+      playTone(noteData[currentNote].freq);
+      startTime = performance.now(); // 速度計測の開始
+      document.getElementById('message').innerText = "何の音？";
+    }
+
+    // --- 入力処理 ---
+    function handleInput(key) {
+      if (!isPlaying || !currentNote) return;
+      
+      // キーボードの見た目を光らせる
+      const btn = document.getElementById(`btn-${key}`);
+      if(btn) {
+        btn.classList.add('active');
+        setTimeout(() => btn.classList.remove('active'), 100);
+      }
+
+      checkAnswer(key === currentNote);
+    }
+
+    // --- 【修正箇所】判定ロジック（Safari対策 ＆ 追加時間） ---
+    function checkAnswer(isCorrect) {
+      let responseTime = performance.now() - startTime;
+      let msgHTML = "";
+
+      if (isCorrect) {
+        // ① iOS（iPhone/iPad）またはSafariかどうかを判定
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+        
+        // ② 端末に合わせてコンボの制限時間を切り替え (1000ms or 800ms)
+        const comboTimeLimit = (isIOS || isSafari) ? 1000 : 800;
+
+        // ③ 判定と追加秒数ロジック
+        if (responseTime <= comboTimeLimit) {
+          combo++;
+          let speedMultiplier = Math.min(1.0 + (combo * 0.2), 3.0);
+          let finalPoints = Math.floor(basePoints * speedMultiplier);
+          msgHTML = `<span style="color:#2ecc71">⭕ 正解！</span> <span style="color:#f1c40f">⚡ FAST!! (+${finalPoints}点 / 速度x${speedMultiplier.toFixed(1)})</span>`;
+          score += finalPoints;
+
+          // 3の倍数の時だけ判定し、コンボ数に応じて追加時間を変える
+          if (combo > 0 && combo % 3 === 0) {
+            if (combo >= 9) {
+              timeLeft += 4; document.getElementById('combo-message').innerText = "⏰ +4秒!";
+            } else if (combo === 6) {
+              timeLeft += 3; document.getElementById('combo-message').innerText = "⏰ +3秒!";
+            } else if (combo === 3) {
+              timeLeft += 2; document.getElementById('combo-message').innerText = "⏰ +2秒!";
+            }
+          }
+        } else {
+          // コンボが切れた場合
+          combo = 0; 
+          score += basePoints; 
+          msgHTML = `<span style="color:#2ecc71">⭕ 正解！ (+${basePoints}点)</span>`;
+          document.getElementById('combo-message').innerText = "";
+        }
+        
+        document.getElementById('message').innerHTML = msgHTML;
+        updateDisplay();
+        setTimeout(nextNote, 300); // 少し待ってから次の音
+        
       } else {
-        el.classList.remove('visible-key');
+        // 不正解の場合
+        combo = 0;
+        document.getElementById('combo-message').innerText = "";
+        document.getElementById('message').innerHTML = `<span style="color:#e74c3c">❌ ブブー！（正解は ${noteData[currentNote].name}）</span>`;
+        updateDisplay();
+        // 音を覚えさせるために正解の音を鳴らし直す
+        playTone(noteData[currentNote].freq);
+        setTimeout(nextNote, 800);
       }
-      
-      if (currentAvailableNotes.includes(noteId)) {
-        el.classList.add('active-key');
-      } else {
-        el.classList.remove('active-key');
-      }
-    });
-  }
+    }
 
-  function updateKeyboardUI() { updateDifficulty(); }
-
-  function startSequence() {
-    if (isPlayingGame || isCountingDown) return;
-    initAudio(); isCountingDown = true;
-    document.body.style.backgroundColor = stageColors[0]; 
-    
-    document.getElementById('instrument-select').disabled = true;
-    document.getElementById('keyboard-mode-select').disabled = true;
-    document.getElementById('start-btn').style.display = 'none';
-    document.getElementById('game-message-area').innerHTML = "準備はいい？";
-    document.getElementById('countdown').style.display = 'block';
-    
-    combo = 0; streak = 0; score = 0; timeLeft = 30; currentNoteCount = 4;
-    updateStats(); updateDifficulty();
-    document.getElementById('combo-message').innerHTML = '';
-
-    const now = audioCtx.currentTime;
-    playCountdownSequence(now);
-
-    let count = 3; document.getElementById('countdown').innerText = count;
-    const countInterval = setInterval(() => {
-      count--;
-      if (count > 0) { document.getElementById('countdown').innerText = count; } 
-      else {
-        clearInterval(countInterval); 
-        document.getElementById('countdown').style.display = 'none';
-        isCountingDown = false; 
-        startGameLoop(); 
-      }
-    }, 1000); 
-  }
-
-  function startGameLoop() {
-    isPlayingGame = true;
-    timerInterval = setInterval(() => {
-      timeLeft--; updateStats();
-      if (timeLeft <= 0) endGame();
-    }, 1000);
-    // 笛の音が完全に終わってから十分に間隔を空ける（1.2秒）
-    setTimeout(nextQuestion, 1200); 
-  }
-
-  function getNextNoteByWeight() {
-    let totalWeight = 0; let weights = {};
-    currentAvailableNotes.forEach(note => {
-      let stat = noteStats[note]; let weight = 1.0; 
-      if (stat.attempts > 0) {
-        weight += (1 - (stat.correct / stat.attempts)) * 2.0;
-        weight += Math.min((stat.totalTime / stat.correct || 1000) / 800, 1.5);
-      }
-      weights[note] = weight; totalWeight += weight;
-    });
-    let rand = Math.random() * totalWeight;
-    for (let note of currentAvailableNotes) { rand -= weights[note]; if (rand <= 0) return note; }
-    return currentAvailableNotes[0];
-  }
-
-  function nextQuestion() {
-    if (!isPlayingGame) return;
-    isWaitingForAnswer = false;
-    document.getElementById('game-message-area').innerHTML = "🎵 基準音(ド) ➡ 問題音...";
-    playTone(getFrequency('C'), 0.4);
-    setTimeout(() => {
-      if (!isPlayingGame) return;
-      currentQuestionNote = getNextNoteByWeight(); 
-      noteStats[currentQuestionNote].attempts++; 
-      playTone(getFrequency(currentQuestionNote), 0.6);
-      questionStartTime = performance.now(); isWaitingForAnswer = true;
-    }, 600);
-  }
-
-  function checkAnswer(answerNote) {
-    if (!isPlayingGame || !isWaitingForAnswer) return;
-    if (!currentAvailableNotes.includes(answerNote)) return;
-
-    const responseTime = Math.round(performance.now() - questionStartTime); 
-    isWaitingForAnswer = false; 
-
-    if (answerNote === currentQuestionNote) {
-      streak++; 
-      noteStats[currentQuestionNote].correct++;
-      noteStats[currentQuestionNote].totalTime += responseTime;
-      
-      // ★ 正解時のレベルアップ処理（3問連続で+2音）
-      if (streak > 0 && streak % 3 === 0) {
-        currentNoteCount = Math.min(activeNoteSequence.length, currentNoteCount + 2);
-      }
-      saveStats(); updateAnalyticsUI(); updateDifficulty();
-
-      playCorrectSE();
-      document.body.classList.add('flash-green'); 
-      setTimeout(() => document.body.classList.remove('flash-green'), 100);
-
-      let basePoints = Math.max(10, Math.floor(1000 - responseTime)); 
-      let difficultyMultiplier = 1.0 + ((currentNoteCount - 4) * 0.25); 
-      basePoints = Math.floor(basePoints * difficultyMultiplier);
-
-      let msgHTML = `⭕ 正解！ (+${basePoints}点)<br><small>反応: ${responseTime} ms (難易度ボーナス x${difficultyMultiplier.toFixed(2)})</small>`;
-      
-     if (responseTime <= 1000) {
-        combo++;
-        let speedMultiplier = Math.min(1.0 + (combo * 0.2), 3.0);
-        let finalPoints = Math.floor(basePoints * speedMultiplier);
-        msgHTML = `<span style="color:#f1c40f">⚡ FAST!! (+${finalPoints}点 / 速度x${speedMultiplier.toFixed(1)})</span>`;
-        score += finalPoints;
-
-        if (combo > 0 && combo % 6 === 0) { timeLeft += 3; document.getElementById('combo-message').innerText = "⏰ +3秒!"; } 
-        else if (combo > 0 && combo % 3 === 0) { timeLeft += 2; document.getElementById('combo-message').innerText = "⏰ +2秒!"; }
-      } else {
-        combo = 0; score += basePoints; document.getElementById('combo-message').innerText = "";
-      }
-      
-      updateStats();
-      document.getElementById('game-message-area').innerHTML = msgHTML;
-      const correctBtn = document.getElementById('note-'+answerNote);
-      if(correctBtn) { correctBtn.classList.add('correct-highlight'); setTimeout(() => correctBtn.classList.remove('correct-highlight'), 300); }
-      setTimeout(nextQuestion, 500);
-
-    } else {
-      streak = 0; combo = 0;
-      // ★ ミス時のレベルダウン処理（-1音）
-      currentNoteCount = Math.max(4, currentNoteCount - 1);
-      saveStats(); updateAnalyticsUI(); updateDifficulty(); 
-      
-      playIncorrectSE();
-      document.body.classList.add('flash-red'); 
-      setTimeout(() => document.body.classList.remove('flash-red'), 100);
-      updateStats();
-      
-      // ★ 正解だった鍵盤を光らせる（直感的な学習サポート）
-      const actualCorrectBtn = document.getElementById('note-'+currentQuestionNote);
-      if(actualCorrectBtn) {
-        actualCorrectBtn.classList.add('correct-highlight');
-        setTimeout(() => actualCorrectBtn.classList.remove('correct-highlight'), 800);
-      }
-
+    // --- ゲーム終了と評価 ---
+    function endGame() {
+      isPlaying = false;
+      clearInterval(timerInterval);
+      document.getElementById('keys-container').style.display = 'none';
+      document.getElementById('message').innerText = "";
       document.getElementById('combo-message').innerText = "";
-      document.getElementById('game-message-area').innerHTML = `❌ 惜しい！<br><small>正解は <strong>${document.getElementById('note-'+currentQuestionNote).innerText.replace(/\(.\)/g,'')}</strong> でした。開放音が1つ減ります。</small>`;
-      setTimeout(nextQuestion, 1000);
+      
+      document.getElementById('result-area').style.display = 'block';
+      document.getElementById('final-score').innerText = score;
+
+      // 【修正箇所】カタカナの評価ランク
+      let rankName = ""; let rankColor = ""; let rankDesc = "";
+
+      if (score < 6000) { 
+        rankName = "🥉 ビギナー"; rankColor = "#cd7f32"; 
+        rankDesc = "近い音程の距離感が掴めてきたレベル"; 
+      }
+      else if (score < 12000) { 
+        rankName = "🥈 レギュラー"; rankColor = "#bdc3c7"; 
+        rankDesc = "1オクターブ内の跳躍に迷いがなくなってきたレベル"; 
+      }
+      else if (score < 20000) { 
+        rankName = "🏅 ベテラン"; rankColor = "#3498db"; 
+        rankDesc = "拡張レンジでの跳躍にも素早く反応できる、瞬時の判断力が身についてきた証！"; 
+      }
+      else if (score < 35000) { 
+        rankName = "🥇 エキスパート"; rankColor = "#f1c40f"; 
+        rankDesc = "基準のドに対する相対音感が強固になり、ほぼノータイムで音が取れるレベル"; 
+      }
+      else if (score < 50000) { 
+        rankName = "👑 マスター"; rankColor = "#e67e22"; 
+        rankDesc = "考えなくても指が動く、完璧な相対音感と反射神経の持ち主"; 
+      }
+      else { 
+        rankName = "✨ 神の耳"; rankColor = "#ff4500"; 
+        rankDesc = "システムと完全に同化。限界スピードでの連続正解を維持できる究極の耳！"; 
+      }
+
+      document.getElementById('rank-title').innerText = rankName;
+      document.getElementById('rank-title').style.color = rankColor;
+      document.getElementById('rank-desc').innerText = rankDesc;
     }
-  }
 
-  function updateStats() {
-    document.getElementById('score').innerText = score;
-    document.getElementById('time').innerText = timeLeft;
-    document.getElementById('combo-count-large').innerText = combo;
-    document.getElementById('streak').innerText = streak;
-    
-    let stageIndex = Math.floor(score / 8000); 
-    if (stageIndex >= stageColors.length) stageIndex = stageColors.length - 1;
-    document.body.style.backgroundColor = stageColors[stageIndex];
-  }
+    // --- 表示の更新 ---
+    function updateDisplay() {
+      document.getElementById('time-display').innerText = timeLeft;
+      document.getElementById('score-display').innerText = score;
+    }
 
-  function saveStats() { localStorage.setItem('saxEarTrainStats', JSON.stringify(noteStats)); }
-
-  function updateAnalyticsUI() {
-    let displayData = [];
-    allNoteKeys.forEach(note => {
-      let stat = noteStats[note];
-      if (stat.attempts > 2) { 
-        let accuracy = Math.round((stat.correct / stat.attempts) * 100);
-        let avgTime = stat.correct > 0 ? Math.round(stat.totalTime / stat.correct) : 0;
-        let weakScore = (100 - accuracy) * 10 + avgTime;
-        displayData.push({ note: note, accuracy: accuracy, avgTime: avgTime, weakScore: weakScore });
+    // --- キーボード入力の受付（PC用） ---
+    document.addEventListener('keydown', (event) => {
+      const key = event.key.toUpperCase();
+      if (noteKeys.includes(key)) {
+        handleInput(key);
       }
     });
-    if (displayData.length === 0) return;
-    displayData.sort((a, b) => b.weakScore - a.weakScore);
-    const top3 = displayData.slice(0, 3);
-    let html = ''; 
-    const noteNames = { 'LowA':'ラ↓', 'LowB':'シ↓', 'C':'ド', 'D':'レ', 'E':'ミ', 'F':'ファ', 'G':'ソ', 'A':'ラ', 'B':'シ', 'HighC':'ド↑', 'HighD':'レ↑', 'HighE':'ミ↑' };
-    top3.forEach((d, i) => {
-      html += `<div class="weak-note-item"><span>${i+1}. <strong>${noteNames[d.note]}</strong></span><span>正答率: ${d.accuracy}% / 平均: ${d.avgTime}ms</span></div>`;
-    });
-    document.getElementById('weak-notes-list').innerHTML = html;
-  }
-
-  function updateHistoryUI() {
-    const listEl = document.getElementById('history-list');
-    if (scoreHistory.length === 0) { listEl.innerHTML = "<div style='color:#bdc3c7; text-align:center;'>まだ履歴がありません</div>"; return; }
-    let html = '';
-    scoreHistory.slice().reverse().slice(0, 10).forEach((data) => {
-      html += `<div class="history-item"><div style="font-size:1.1em; font-weight:bold;">${data.score} 点</div><div style="color:#bdc3c7;">最高連続: ${data.streak}回 <br><small>${data.date}</small></div></div>`;
-    });
-    listEl.innerHTML = html;
-  }
-
-  function endGame() {
-    clearInterval(timerInterval);
-    isPlayingGame = false; isWaitingForAnswer = false;
-    document.getElementById('instrument-select').disabled = false; 
-    document.getElementById('keyboard-mode-select').disabled = false;
-    document.getElementById('time').innerText = "0";
-    
-    const dateStr = new Date().toLocaleString();
-    scoreHistory.push({ score: score, streak: streak, date: dateStr });
-    localStorage.setItem('saxEarTrainHistory', JSON.stringify(scoreHistory));
-    updateHistoryUI(); 
-    
-    let rankName = ""; let rankColor = ""; let rankDesc = "";
-    if (score < 6000) { 
-      rankName = "🥉 ビギナー"; rankColor = "#cd7f32"; 
-      rankDesc = "近い音程の距離感が掴めてきたレベル"; 
-    }
-    else if (score < 12000) { 
-      rankName = "🥈 レギュラー"; rankColor = "#bdc3c7"; 
-      rankDesc = "1オクターブ内の跳躍に迷いがなくなってきたレベル"; 
-    }
-    else if (score < 20000) { 
-      rankName = "🏅 ベテラン"; rankColor = "#3498db"; 
-      rankDesc = "拡張レンジでの跳躍にも素早く反応できる、瞬時の判断力が身についてきた証！"; 
-    }
-    else if (score < 35000) { 
-      rankName = "🥇 エキスパート"; rankColor = "#f1c40f"; 
-      rankDesc = "基準のドに対する相対音感が強固になり、ほぼノータイムで音が取れるレベル"; 
-    }
-    else if (score < 50000) { 
-      rankName = "👑 マスター"; rankColor = "#e67e22"; 
-      rankDesc = "考えなくても指が動く、完璧な相対音感と反射神経の持ち主"; 
-    }
-    else { 
-      rankName = "✨ 神の耳"; rankColor = "#ff4500"; 
-      rankDesc = "システムと完全に同化。限界スピードでの連続正解を維持できる究極の耳！"; 
-    }
-    let endMsg = `🏁 タイムアップ！<br>最終スコア: ${score}点 (最高連続: ${streak}回)<br>`;
-    endMsg += `<div class="rank-display" style="color:${rankColor};">${rankName}<br><span style="font-size:0.55em; font-weight:normal; color:#ecf0f1;">${rankDesc}</span></div>`;
-    
-    if (score >= TARGET_SCORE) { endMsg += `<div style="color:#f1c40f; font-weight:bold; margin-bottom:10px;">🎉 段階2（ランダムキー）解放条件達成！</div>`; }
-    endMsg += `<button class="action-btn" onpointerdown="event.preventDefault(); startSequence()" style="margin-top:10px;">もう一度プレイ</button>`;
-    
-    document.getElementById('game-message-area').innerHTML = endMsg;
-  }
-
-  const keyMap = { 
-    'z': 'LowA', 'x': 'LowB',
-    'a': 'C', 's': 'D', 'd': 'E', 'f': 'F', 'j': 'G', 'k': 'A', 'l': 'B', ';': 'HighC', '+': 'HighC',
-    'q': 'HighD', 'w': 'HighE'
-  };
-  const domKeyMap = { 
-    'z': 'note-LowA', 'x': 'note-LowB',
-    'a': 'note-C', 's': 'note-D', 'd': 'note-E', 'f': 'note-F', 'j': 'note-G', 'k': 'note-A', 'l': 'note-B', ';': 'note-HighC', '+': 'note-HighC',
-    'q': 'note-HighD', 'w': 'note-HighE'
-  };
-
-  window.addEventListener('keydown', (e) => {
-    const key = e.key.toLowerCase();
-    if (keyMap[key]) { 
-      const btn = document.getElementById(domKeyMap[key]); 
-      if(btn && currentAvailableNotes.includes(keyMap[key])) { 
-        btn.classList.add('pressed'); checkAnswer(keyMap[key]); 
-      } 
-    }
-  });
-  window.addEventListener('keyup', (e) => {
-    const key = e.key.toLowerCase();
-    if (domKeyMap[key]) { const btn = document.getElementById(domKeyMap[key]); if(btn) btn.classList.remove('pressed'); }
-  });
-</script>
+  </script>
 </body>
 </html>
