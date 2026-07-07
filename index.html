@@ -3,7 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Transposing Ear Training - V20</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=M+PLUS+Rounded+1c:wght@700;900&display=swap" rel="stylesheet">
+<title>Transposing Ear Training - V21</title>
 <style>
   body { font-family: sans-serif; text-align: center; margin: 0; padding: 20px 10px; background-color: #2c3e50; color: #ecf0f1; transition: background-color 0.8s ease; touch-action: manipulation; }
   #app-container { display: flex; max-width: 1100px; margin: 0 auto; gap: 15px; align-items: stretch; justify-content: center; flex-wrap: wrap; }
@@ -141,9 +144,50 @@
   }
   .modal-content h3 { margin-top: 0; color: #1abc9c; text-align: center; }
  
+  /* ==== ★ タップしてスタート画面（AudioContext解禁用オーバーレイ）==== */
+  #tap-to-start-overlay {
+    position: fixed; inset: 0; z-index: 2000;
+    background: radial-gradient(circle at 50% 40%, #2c3e50 0%, #16202b 100%);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; cursor: pointer; touch-action: manipulation; padding: 20px; box-sizing: border-box;
+  }
+  .tap-title {
+    font-family: 'Fredoka One', 'M PLUS Rounded 1c', sans-serif;
+    font-size: 3em; margin: 0 0 10px 0; letter-spacing: 2px;
+    background: linear-gradient(90deg, #1abc9c, #f1c40f, #e74c3c);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    animation: tap-pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes tap-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+  .tap-instruction {
+    font-family: 'M PLUS Rounded 1c', sans-serif; font-weight: 700;
+    font-size: 1.2em; color: #ecf0f1; margin: 6px 0 4px 0;
+  }
+  .tap-warning { font-size: 0.85em; color: #95a5a6; margin: 0; }
+  .tap-icon { font-size: 2.5em; margin-bottom: 10px; animation: tap-pulse 1.6s ease-in-out infinite; }
+ 
+  /* ==== ★ BGM ON/OFF トグルボタン ==== */
+  #bgm-toggle-btn {
+    background: rgba(26, 188, 156, 0.15); border: 1px solid #1abc9c; color: #1abc9c;
+    padding: 7px 14px; border-radius: 20px; font-size: 0.85em; font-weight: bold;
+    cursor: pointer; margin: 0 auto 16px auto; display: inline-block; touch-action: manipulation;
+  }
+  #bgm-toggle-btn.bgm-off { border-color: #7f8c8d; color: #7f8c8d; background: rgba(127,140,141,0.1); }
+ 
 </style>
 </head>
 <body>
+ 
+<!-- ==== ★ タップしてスタート画面（ブラウザの自動再生ポリシー解禁用）==== -->
+<div id="tap-to-start-overlay" onclick="handleTapToStart();">
+  <div class="tap-icon">👆</div>
+  <h1 class="tap-title">Ear Trainer</h1>
+  <p class="tap-instruction">画面をタップしてスタート</p>
+  <p class="tap-warning">※音が流れます</p>
+</div>
+ 
+<!-- ==== ★ BGM（バックグラウンドミュージック）==== -->
+<audio id="bgm-audio" src="バーで流れそうなピアノジャズ.mp3" loop preload="auto"></audio>
  
 <div id="app-container">
   <div id="history-sidebar">
@@ -165,6 +209,8 @@
       </div>
  
       <button class="link-btn" onpointerdown="event.preventDefault(); showRulesModal();">📖 詳しいルールを見る (How to play)</button>
+      <br>
+      <button id="bgm-toggle-btn" onclick="toggleBGM();">🔊 BGM: ON</button>
  
       <div class="stage-select">
         <div class="stage-card selected" id="stage-1-card" onpointerdown="event.preventDefault(); selectStage(1);">
@@ -175,7 +221,7 @@
         <div class="stage-card locked" id="stage-2-card" onpointerdown="event.preventDefault(); selectStage(2);">
           <div class="stage-badge">STAGE 2</div>
           <div class="stage-name">ランダム基準音</div>
-          <div class="stage-desc">相対音感トレーニング（プロトタイプ）</div>
+          <div class="stage-desc">ランダムな基準音に惑わされず、鳴った音を聴き分けるプロトタイプ</div>
           <div class="lock-overlay" id="stage-2-lock-label">🔒 30,000点で解放</div>
         </div>
       </div>
@@ -261,7 +307,7 @@
       ・<strong>コンボが続くほど背景が熱く変化</strong>し、3コンボごとに専用の<strong>レベルアップ音</strong>が鳴ります。<br>
       ・出題音・基準音はサックス風の音色でシンセサイズされています🎷<br>
       ・<strong>ゲーム終了後も鍵盤は鳴らせます。</strong>スコアに影響しないので音の確認に自由に使えます。<br>
-      ・<strong>ステージ2</strong>では基準音が毎回ランダムになり、相対的な音程差（インターバル）を聴き分けるプロトタイプ仕様です。<br>
+      ・<strong>ステージ2</strong>では基準音が毎回ランダムになりますが、問題音は常に鳴った音名そのものが正解です（惑わされないように！）。<br>
       ・ステージ2では基準音が鳴る際、<strong>対象の鍵盤が黄色く光り</strong>、テキストでも音名をお知らせします。<br>
       ・30,000点を超えるとステージ2への実力十分！
     </div>
@@ -273,6 +319,65 @@
 <script>
   let audioCtx;
   const MASTER_A = 442.00;
+ 
+  // ==== ★ BGM（バックグラウンドミュージック）制御 ====
+  const bgmAudio = document.getElementById('bgm-audio');
+  const BGM_VOLUME = 0.35;
+  bgmAudio.volume = BGM_VOLUME;
+  let bgmEnabled = (localStorage.getItem('saxEarTrainBgmEnabled') !== 'false'); // デフォルトON
+  let bgmFadeInterval = null;
+ 
+  // ★ タップしてスタート画面：ここでAudioContextとBGMの両方を解禁する
+  function handleTapToStart() {
+    document.getElementById('tap-to-start-overlay').style.display = 'none';
+    initAudio();
+    updateBgmToggleUI();
+    playBGM();
+  }
+ 
+  function playBGM() {
+    if (!bgmEnabled) return;
+    clearInterval(bgmFadeInterval);
+    bgmAudio.volume = BGM_VOLUME;
+    bgmAudio.play().catch(() => {}); // 自動再生が拒否された場合も静かに無視する
+  }
+ 
+  function stopBGM(fade = true) {
+    clearInterval(bgmFadeInterval);
+    if (!fade) { bgmAudio.pause(); bgmAudio.volume = BGM_VOLUME; return; }
+    // ★ ゲーム開始時はフェードアウトさせて滑らかに止める
+    bgmFadeInterval = setInterval(() => {
+      const next = bgmAudio.volume - 0.05;
+      if (next <= 0) {
+        bgmAudio.pause();
+        bgmAudio.volume = BGM_VOLUME;
+        clearInterval(bgmFadeInterval);
+      } else {
+        bgmAudio.volume = next;
+      }
+    }, 60);
+  }
+ 
+  function toggleBGM() {
+    bgmEnabled = !bgmEnabled;
+    localStorage.setItem('saxEarTrainBgmEnabled', String(bgmEnabled));
+    updateBgmToggleUI();
+    const startScreenVisible = document.getElementById('start-screen').style.display !== 'none';
+    if (bgmEnabled && startScreenVisible) {
+      playBGM();
+    } else if (!bgmEnabled) {
+      stopBGM(false);
+    }
+  }
+ 
+  function updateBgmToggleUI() {
+    const btn = document.getElementById('bgm-toggle-btn');
+    if (!btn) return;
+    btn.innerText = bgmEnabled ? '🔊 BGM: ON' : '🔇 BGM: OFF';
+    btn.classList.toggle('bgm-off', !bgmEnabled);
+  }
+  updateBgmToggleUI();
+ 
   const baseFreqs = {
     'C':  MASTER_A * Math.pow(2, -9/12),
     'Bb': MASTER_A * Math.pow(2, -11/12), 
@@ -334,13 +439,6 @@
   function getFrequency(noteName) {
     const instrument = document.getElementById('instrument-select').value;
     return baseFreqs[instrument] * Math.pow(2, semitoneOffsets[noteName] / 12);
-  }
- 
-  // ★ ステージ2用：基準音(referenceNoteName)を新たな「ド」とみなし、そこからのインターバルでnoteNameの周波数を算出
-  function getFrequencyRelativeTo(referenceNoteName, noteName) {
-    const instrument = document.getElementById('instrument-select').value;
-    const totalSemitones = semitoneOffsets[referenceNoteName] + semitoneOffsets[noteName];
-    return baseFreqs[instrument] * Math.pow(2, totalSemitones / 12);
   }
  
   function initAudio() {
@@ -529,6 +627,7 @@
   function beginGame() {
     document.getElementById('start-screen').style.display = 'none';
     document.getElementById('game-screen').style.display = 'block';
+    stopBGM(true); // ★ ゲーム画面に入るのでBGMをフェードアウト
     startSequence();
   }
  
@@ -538,6 +637,7 @@
     document.getElementById('start-screen').style.display = 'block';
     document.getElementById('start-btn').style.display = ''; // ★ startSequence()でnoneにした表示を復元
     renderStageLockState();
+    playBGM(); // ★ ステージ選択画面に戻ったのでBGMを再開（ON設定時のみ）
   }
  
   function startSequence() {
@@ -568,7 +668,7 @@
     document.getElementById('game-message-area').innerHTML = "準備はいい？";
     document.getElementById('countdown').style.display = 'block';
     
-    combo = 0; streak = 0; score = 0; timeLeft = 30; currentNoteCount = 4;
+    combo = 0; streak = 0; score = 0; timeLeft = 30; currentNoteCount = 4; recentQuestionNotes = [];
     updateStats(); updateDifficulty(); updateGameStatusLine();
     document.getElementById('combo-message').innerHTML = '';
  
@@ -598,6 +698,9 @@
     setTimeout(nextQuestion, 1200); 
   }
  
+  // ★ 出題の偏り防止用：直近に出題した音を保持（最大2件）
+  let recentQuestionNotes = [];
+ 
   function getNextNoteByWeight() {
     let totalWeight = 0; let weights = {};
     currentAvailableNotes.forEach(note => {
@@ -608,23 +711,53 @@
       }
       weights[note] = weight; totalWeight += weight;
     });
-    let rand = Math.random() * totalWeight;
-    for (let note of currentAvailableNotes) { rand -= weights[note]; if (rand <= 0) return note; }
-    return currentAvailableNotes[0];
+ 
+    // ★ 同じ音が2回連続で出題されないようにする
+    const isImmediateRepeat = (note) => 
+      recentQuestionNotes.length >= 1 && recentQuestionNotes[recentQuestionNotes.length - 1] === note;
+ 
+    // ★「ド→レ→ミ」のように隣接する音が3連続で同じ向きに並ぶ（単純な音階）のを防ぐ
+    const formsSimpleScaleRun = (note) => {
+      if (recentQuestionNotes.length < 2) return false;
+      const idxPrev2 = activeNoteSequence.indexOf(recentQuestionNotes[recentQuestionNotes.length - 2]);
+      const idxPrev1 = activeNoteSequence.indexOf(recentQuestionNotes[recentQuestionNotes.length - 1]);
+      const idxNow   = activeNoteSequence.indexOf(note);
+      if (idxPrev2 === -1 || idxPrev1 === -1 || idxNow === -1) return false;
+      const step1 = idxPrev1 - idxPrev2;
+      const step2 = idxNow - idxPrev1;
+      return Math.abs(step1) === 1 && step1 === step2; // 隣接キー同士が同じ向きに2ステップ続く
+    };
+ 
+    // 両方の条件を満たす候補で絞り込む。開放音数が少なく候補が全滅する場合は段階的に制約を緩める。
+    let candidates = currentAvailableNotes.filter(n => !isImmediateRepeat(n) && !formsSimpleScaleRun(n));
+    if (candidates.length === 0) candidates = currentAvailableNotes.filter(n => !isImmediateRepeat(n));
+    if (candidates.length === 0) candidates = currentAvailableNotes;
+ 
+    let candidateTotalWeight = 0;
+    candidates.forEach(n => { candidateTotalWeight += weights[n]; });
+ 
+    let rand = Math.random() * candidateTotalWeight;
+    let chosen = candidates[0];
+    for (let note of candidates) { rand -= weights[note]; if (rand <= 0) { chosen = note; break; } }
+ 
+    recentQuestionNotes.push(chosen);
+    if (recentQuestionNotes.length > 2) recentQuestionNotes.shift();
+ 
+    return chosen;
   }
  
   function nextQuestion() {
     if (!isPlayingGame) return;
     isWaitingForAnswer = false;
  
-    // ★ ステージ2：基準音を毎回ランダムに選び、そこからの相対的な音程差で問題音を鳴らす（プロトタイプ）
+    // ★ ステージ2：基準音を毎回ランダムに選ぶ（問題音自体は絶対音程のまま鳴らす。基準音はあくまで「惑わせ」の演出）
     const referenceNoteName = (currentStage === 2)
       ? referenceNotePool[Math.floor(Math.random() * referenceNotePool.length)]
       : 'C';
     const referenceFreq = getFrequency(referenceNoteName);
  
     document.getElementById('game-message-area').innerHTML = (currentStage === 2)
-      ? `🎵 基準音(${noteNames[referenceNoteName]}) ➡ 問題音...(相対音程で聴き分けよう)`
+      ? `🎵 基準音(${noteNames[referenceNoteName]}) ➡ 問題音...(基準音に惑わされず聴き分けよう)`
       : "🎵 基準音(ド) ➡ 問題音...";
  
     // ★ ステージ2：基準音が鳴るタイミング(0.4秒)に合わせて、対象の鍵盤を黄色くハイライトする
@@ -641,9 +774,9 @@
       if (!isPlayingGame) return;
       currentQuestionNote = getNextNoteByWeight(); 
       noteStats[currentQuestionNote].attempts++; 
-      const questionFreq = (currentStage === 2)
-        ? getFrequencyRelativeTo(referenceNoteName, currentQuestionNote)
-        : getFrequency(currentQuestionNote);
+      // ★ ステージ2でも問題音は常にcurrentQuestionNoteの「絶対的な周波数」で鳴らす。
+      //    基準音はランダムだが、正解の鍵盤＝実際に鳴った音（名前ベース）と完全に一致する仕様。
+      const questionFreq = getFrequency(currentQuestionNote);
       playSaxTone(questionFreq, 0.6);
       questionStartTime = performance.now(); isWaitingForAnswer = true;
     }, 600);
@@ -814,25 +947,29 @@
     const justUnlocked = !wasUnlocked && bestScore >= TARGET_SCORE;
     
     let rankName = ""; let rankColor = ""; let rankDesc = "";
-    if (score < 6000) { 
+    if (score < 10000) { 
       rankName = "🥉 ビギナー"; rankColor = "#cd7f32"; 
       rankDesc = "近い音程の距離感が掴めてきたレベル"; 
     }
-    else if (score < 12000) { 
+    else if (score < 25000) { 
       rankName = "🥈 レギュラー"; rankColor = "#bdc3c7"; 
       rankDesc = "1オクターブ内の跳躍に迷いがなくなってきたレベル"; 
     }
-    else if (score < 20000) { 
+    else if (score < 40000) { 
       rankName = "🏅 ベテラン"; rankColor = "#3498db"; 
       rankDesc = "拡張レンジでの跳躍にも素早く反応できる、瞬時の判断力が身についてきた証！"; 
     }
-    else if (score < 35000) { 
+    else if (score < 50000) { 
       rankName = "🥇 エキスパート"; rankColor = "#f1c40f"; 
       rankDesc = "基準のドに対する相対音感が強固になり、ほぼノータイムで音が取れるレベル"; 
     }
-    else if (score < 50000) { 
+    else if (score < 100000) { 
       rankName = "👑 マスター"; rankColor = "#e67e22"; 
       rankDesc = "考えなくても指が動く、完璧な相対音感と反射神経の持ち主"; 
+    }
+    else if (score < 150000) {
+      rankName = "🏆 グランドマスター"; rankColor = "#8e44ad";
+      rankDesc = "ステージ2の惑わせにも動じない、名手と呼ぶにふさわしい領域";
     }
     else { 
       rankName = "✨ 神の耳"; rankColor = "#ff4500"; 
@@ -844,8 +981,8 @@
     if (score >= TARGET_SCORE) { endMsg += `<div style="color:#f1c40f; font-weight:bold; margin-bottom:10px;">🎉 段階2（ランダム基準音）解放条件達成！</div>`; }
     if (justUnlocked) { endMsg += `<div style="color:#2ecc71; font-weight:bold; margin-bottom:10px;">🔓 ステージ2がアンロックされました！ステージ選択から挑戦できます。</div>`; }
     endMsg += `<div style="font-size:0.85em; color:#1abc9c; margin-bottom:10px;">🎹 下の鍵盤はそのまま鳴らせます。間違えた音の確認やピッチチェックにどうぞ。</div>`;
-    endMsg += `<button class="action-btn" onpointerdown="event.preventDefault(); startSequence()" style="margin-top:10px;">もう一度プレイ <small>(Space)</small></button><br>`;
-    endMsg += `<button class="link-btn" onpointerdown="event.preventDefault(); returnToStartScreen();" style="margin-top:6px;">🔁 ステージ選択・設定に戻る</button>`;
+    endMsg += `<button class="action-btn" onclick="startSequence()" style="margin-top:10px;">もう一度プレイ <small>(Space)</small></button><br>`;
+    endMsg += `<button class="link-btn" onclick="returnToStartScreen();" style="margin-top:6px;">🔁 ステージ選択・設定に戻る</button>`;
     
     document.getElementById('game-message-area').innerHTML = endMsg;
   }
@@ -894,3 +1031,6 @@
 </body>
 </html>
  
+
+
+
