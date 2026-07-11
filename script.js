@@ -226,7 +226,7 @@ let bestScore = parseInt(localStorage.getItem('saxEarTrainBestScore') || '0', 10
 
 // ==== ★ 外部送信（GAS/Discord）設定 ====
 // TODO: 実際のGASウェブアプリURL / Discord Webhook URLに置き換えてください
-const GAS_URL = "https://script.google.com/macros/s/AKfycbwOSfnOMJRppzGwi8zMp8CyOYQZT7rvt8a-OVx7WLTYFHIlegLEcjc7GQOwu8N_UACOKg/exec";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbzgR5pfOXgsSkY9HfQ0bEjd33iDNEYZD-z07rOtSAXBCnm7u_rRqvFnqgib_niUr2_kEg/exec";
 const DISCORD_WEBHOOK_URL = "YOUR_DISCORD_WEBHOOK_URL_HERE";
 const SCORE_ALERT_THRESHOLD = 200000; // このスコアを超えたらDiscordに通知
  
