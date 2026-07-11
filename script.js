@@ -781,135 +781,71 @@ function updateHistoryUI() {
  
 function endGame() {
   clearInterval(timerInterval);
-  isPlayingGame = false; isWaitingForAnswer = false;
-  document.getElementById('instrument-select').disabled = false; 
-  document.getElementById('keyboard-mode-select').disabled = false;
-  document.getElementById('time').innerText = "0";document.getElementById('time').innerText = "0";
-  const finalCombo = maxCombo; // ★ 最終時点ではなく、ゲーム中の最大コンボ数を送信する
+  isGameActive = false;
+  document.getElementById('time').innerText = "0";
+  
+  const finalCombo = maxCombo; // 最大コンボ数
   combo = 0; document.getElementById('combo-count-large').innerText = combo;
-  updateBackgroundByCombo(0);
-  updateDifficulty(); // ★ フリープレイ用に、選択中モードの全音をアクティブ表示にする
+
+  // ローカル履歴に保存
+  saveScoreToHistory(score, finalCombo);
   
-  const dateStr = new Date().toLocaleString();
-  scoreHistory.push({ score: score, streak: streak, date: dateStr });
-  localStorage.setItem('saxEarTrainHistory', JSON.stringify(scoreHistory));
-  updateHistoryUI(); 
- 
-  // ★ ベストスコアを更新し、ステージ2・3の解放判定に反映する
-  const wasStage2Unlocked = bestScore >= STAGE2_UNLOCK_SCORE;
-  const wasStage3Unlocked = bestScore >= STAGE3_UNLOCK_SCORE;
-  if (score > bestScore) {
-    bestScore = score;
-    localStorage.setItem('saxEarTrainBestScore', String(bestScore));
-  }
-  renderStageLockState();
-  updateGameStatusLine(); // ★ ベストスコア更新を「🏁 ベストスコア」表示にも反映
-  const stage2JustUnlocked = !wasStage2Unlocked && bestScore >= STAGE2_UNLOCK_SCORE;
-  const stage3JustUnlocked = !wasStage3Unlocked && bestScore >= STAGE3_UNLOCK_SCORE;
+  // ★ ここから変更：直接画面に書くのではなく、モーダルにデータを渡して開く
+  document.getElementById('game-message-area').innerHTML = `<button class="action-btn" onclick="resetToTitle()" style="margin-top:10px;">タイトルに戻る</button>`;
   
-  let rankName = ""; let rankColor = ""; let rankDesc = "";
-  if (score < 10000) { 
-    rankName = "🥉 ビギナー"; rankColor = "#cd7f32"; 
-    rankDesc = "近い音程の距離感が掴めてきたレベル"; 
-  }
-  else if (score < 25000) { 
-    rankName = "🥈 レギュラー"; rankColor = "#bdc3c7"; 
-    rankDesc = "1オクターブ内の跳躍に迷いがなくなってきたレベル"; 
-  }
-  else if (score < 40000) { 
-    rankName = "🏅 ベテラン"; rankColor = "#3498db"; 
-    rankDesc = "拡張レンジでの跳躍にも素早く反応できる、瞬時の判断力が身についてきた証！"; 
-  }
-  else if (score < 50000) { 
-    rankName = "🥇 エキスパート"; rankColor = "#f1c40f"; 
-    rankDesc = "基準のドに対する相対音感が強固になり、ほぼノータイムで音が取れるレベル"; 
-  }
-  else if (score < 100000) { 
-    rankName = "👑 マスター"; rankColor = "#e67e22"; 
-    rankDesc = "考えなくても指が動く、完璧な相対音感と反射神経の持ち主"; 
-  }
-  else if (score < 150000) {
-    rankName = "🏆 グランドマスター"; rankColor = "#8e44ad";
-    rankDesc = "ステージ3の惑わせにも動じない、名手と呼ぶにふさわしい領域";
-  }
-  else { 
-    rankName = "✨ 神の耳"; rankColor = "#ff4500"; 
-    rankDesc = "システムと完全に同化。限界スピードでの連続正解を維持できる究極の耳！"; 
-  }
-  let endMsg = `🏁 タイムアップ！<br>最終スコア: ${score}点 (最高連続: ${streak}回)<br>`;
-  endMsg += `<div class="rank-display" style="color:${rankColor};">${rankName}<br><span style="font-size:0.55em; font-weight:normal; color:#ecf0f1;">${rankDesc}</span></div>`;
+  // モーダルにスコアとコンボをセット
+  document.getElementById('modal-final-score').innerText = score;
+  document.getElementById('modal-final-combo').innerText = finalCombo;
   
-  if (stage2JustUnlocked) { endMsg += `<div style="color:#2ecc71; font-weight:bold; margin-bottom:10px;">🔓 ステージ2がアンロックされました！ステージ選択から挑戦できます。</div>`; }
-  if (stage3JustUnlocked) { endMsg += `<div style="color:#2ecc71; font-weight:bold; margin-bottom:10px;">🔓 ステージ3がアンロックされました！ステージ選択から挑戦できます。</div>`; }
-  endMsg += `<div style="font-size:0.85em; color:#1abc9c; margin-bottom:10px;">🎹 下の鍵盤はそのまま鳴らせます。間違えた音の確認やピッチチェックにどうぞ。</div>`;
-  endMsg += `<button class="action-btn" onclick="startSequence()" style="margin-top:10px;">もう一度プレイ <small>(Enter)</small></button><br>`;
-  endMsg += `<button class="link-btn" onclick="returnToStartScreen();" style="margin-top:6px;">🔁 ステージ選択・設定に戻る</button>`;
- 
-  // ★ スコア記録UI（名前入力＋GAS/Discordへの送信）
-  endMsg += `
-    <div class="score-submit-box">
-      <input type="text" id="player-name-input" class="score-name-input" placeholder="お名前を入力" maxlength="20">
-      <button id="score-submit-btn" class="action-btn" onclick="submitScore(${score}, ${finalCombo})" style="width:100%; margin-top:8px;">📤 スコアを記録する</button>
-      <div id="score-submit-status" class="score-submit-status"></div>
-    </div>`;
-  
-  document.getElementById('game-message-area').innerHTML = endMsg;
- 
-  // ★ 保存済みのプレイヤー名をプリフィル（HTML属性ではなくDOMプロパティで安全に設定）
-  const nameInput = document.getElementById('player-name-input');
-  if (nameInput) nameInput.value = localStorage.getItem('saxEarTrainPlayerName') || '';
+  // 前回の名前が残っていればセットして、モーダルを表示
+  const savedName = localStorage.getItem('saxEarTrainerName') || '';
+  document.getElementById('player-name-input').value = savedName;
+  document.getElementById('submit-status-msg').innerText = ''; // メッセージリセット
+  document.getElementById('game-over-modal-overlay').style.display = 'flex';
 }
- 
-// ★ スコアの外部送信（GASスプレッドシートへ全件記録＋Discordへの閾値通知）
-function submitScore(finalScore, finalCombo) {
-  const nameInput = document.getElementById('player-name-input');
-  const statusEl = document.getElementById('score-submit-status');
-  const submitBtn = document.getElementById('score-submit-btn');
- 
-  let playerName = nameInput ? nameInput.value.trim() : '';
-  if (!playerName) playerName = '名無しさん';
- 
-  // ★ 次回以降のためにプレイヤー名を保存（プリフィル用）
-  localStorage.setItem('saxEarTrainPlayerName', playerName);
- 
-  if (submitBtn) submitBtn.disabled = true;
-  if (statusEl) statusEl.innerText = '📤 送信中...';
- 
-  // ==== 1. GAS（スプレッドシート）へ全件送信 ====
+
+// ==== ★ 新規追加：モーダル操作とスコア送信関数 ====
+function closeGameOverModal() {
+  document.getElementById('game-over-modal-overlay').style.display = 'none';
+  resetToTitle(); // 閉じたらタイトルへ戻る
+}
+
+function submitScore() {
+  const playerName = document.getElementById('player-name-input').value.trim();
+  const statusEl = document.getElementById('submit-status-msg');
+  
+  if (!playerName) {
+    statusEl.innerText = '⚠️ 名前を入力してください';
+    return;
+  }
+  
+  // 名前を保存（次回から入力不要に）
+  localStorage.setItem('saxEarTrainerName', playerName);
+  
+  const finalScore = parseInt(document.getElementById('modal-final-score').innerText);
+  const finalCombo = parseInt(document.getElementById('modal-final-combo').innerText);
+  
+  statusEl.innerText = '送信中... (Sending...)';
+  
   fetch(GAS_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain' },
     body: JSON.stringify({ name: playerName, score: finalScore, combo: finalCombo })
   })
-    .then(() => {
-      if (statusEl) statusEl.innerText = '✅ スコアを記録しました！';
-      loadLeaderboard(); // 🌟 ここを追加！ 送信後にランキングを最新に更新
-    })
-
-    .then(() => {
-      if (statusEl) statusEl.innerText = '✅ スコアを記録しました！';
-    })
-    .catch((err) => {
-      console.error('GASへの送信に失敗しました:', err);
-      if (statusEl) statusEl.innerText = '⚠️ 送信に失敗しました（GAS_URLの設定をご確認ください）';
-    })
-    .finally(() => {
-      if (submitBtn) submitBtn.disabled = false;
-    });
- 
-  // ==== 2. スコアが閾値を超えていればDiscordへ通知 ====
-  if (finalScore >= SCORE_ALERT_THRESHOLD) {
-    fetch(DISCORD_WEBHOOK_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        content: "🔥 伝説誕生！ **" + playerName + "** が驚異の **" + finalScore + "点** を叩き出しました！ (最大コンボ: " + finalCombo + ")"
-      })
-    }).catch((err) => {
-      console.error('Discordへの通知に失敗しました:', err);
-    });
-  }
+  .then(() => {
+    statusEl.innerText = '✅ 送信完了！ランキングを更新します...';
+    loadLeaderboard(); // ランキングを最新に
+    setTimeout(() => {
+      closeGameOverModal(); // 1.5秒後に自動で閉じる
+    }, 1500);
+  })
+  .catch(err => {
+    console.error(err);
+    statusEl.innerText = '⚠️ 送信に失敗しました。時間をおいて再試行してください。';
+  });
 }
+ 
+
  
 // ==== ★ PC用キー割り当て（カスタマイズ可能）====
 // デフォルトの白鍵キー割り当て。ユーザーはこれを自由に変更でき、localStorageに保存される。

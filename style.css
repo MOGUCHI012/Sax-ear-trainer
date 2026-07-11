@@ -227,3 +227,35 @@ button.action-btn { padding: 15px 30px; font-size: 1.2em; background-color: #e74
   cursor: pointer; outline: none;
 }
 .keybind-input:focus { border-color: #f1c40f; background: #fff9e6; }
+
+/* ==== カウントダウンの画面ズレ防止 ==== */
+#countdown {
+  position: absolute; /* 画面から浮かせることでレイアウト崩れを防ぐ */
+  top: 30%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none; /* タップの邪魔をしない */
+  z-index: 100;
+}
+
+/* ==== スマホ縦画面ブロック（メディアクエリ） ==== */
+#portrait-warning {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; width: 100%; height: 100%;
+  background: #2c3e50;
+  z-index: 9999;
+  color: #fff;
+  text-align: center;
+  padding-top: 30vh;
+}
+
+/* 画面幅が狭く、かつ縦向き（Portrait）の場合のみ警告を表示 */
+@media screen and (max-width: 768px) and (orientation: portrait) {
+  #portrait-warning {
+    display: block;
+  }
+  #app-container, #tap-to-start-overlay {
+    display: none !important; /* 他の画面を隠す */
+  }
+}
