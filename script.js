@@ -210,7 +210,7 @@ let scoreHistory = JSON.parse(localStorage.getItem('saxEarTrainHistory')) || [];
  
 let currentQuestionNote = ''; let questionStartTime = 0; 
 let isPlayingGame = false; let isWaitingForAnswer = false; let isCountingDown = false; 
-let score = 0; let timeLeft = 30; let combo = 0; let streak = 0; let timerInterval;
+let score = 0; let timeLeft = 30; let combo = 0; let maxCombo = 0; let streak = 0; let timerInterval;
  
 // ==== ★ ステージ管理 ====
 // STAGE 1: 固定基準音(ド)・メジャースケールのみ
@@ -243,9 +243,9 @@ function detectDeviceType() {
 }
  
 const deviceType = detectDeviceType();
-const COMBO_TIME_THRESHOLDS = { ios: 1400, android: 1200, pc: 1000 };
+const COMBO_TIME_THRESHOLDS = { ios: 1300, android: 1200, pc: 1000 };
 const COMBO_TIME_THRESHOLD = COMBO_TIME_THRESHOLDS[deviceType];
-const DEVICE_LABELS = { ios: '📱 iOS (猶予1400ms)', android: '🤖 Android (猶予1200ms)', pc: '💻 PC (猶予1000ms)' };
+const DEVICE_LABELS = { ios: '📱 iOS (猶予1300ms)', android: '🤖 Android (猶予1200ms)', pc: '💻 PC (猶予1000ms)' };
  
 document.getElementById('notation-select').value = notationMode;
 document.getElementById('semitone-mode-select').value = semitoneInputMode;
@@ -519,7 +519,7 @@ function beginCountdownSequence() {
   document.getElementById('game-message-area').innerHTML = "準備はいい？";
   document.getElementById('countdown').style.display = 'block';
   
-  combo = 0; streak = 0; score = 0; timeLeft = 30; currentNoteCount = 4; recentQuestionNotes = [];
+  combo = 0; maxCombo = 0; streak = 0; score = 0; timeLeft = 30; currentNoteCount = 4; recentQuestionNotes = [];
   updateStats(); updateDifficulty(); updateGameStatusLine();
   document.getElementById('combo-message').innerHTML = '';
  
@@ -671,9 +671,10 @@ function checkAnswer(answerNote) {
  
     let msgHTML = `⭕ 正解！ (+${basePoints}点)<br><small>反応: ${responseTime} ms (難易度ボーナス x${difficultyMultiplier.toFixed(2)})</small>`;
     
-    // ★ 端末別のコンボ判定猶予（iOS: 1400ms / Android: 1200ms / PC: 1000ms）
+    // ★ 端末別のコンボ判定猶予（iOS: 1300ms / Android: 1200ms / PC: 1000ms）
     if (responseTime <= COMBO_TIME_THRESHOLD) {
       combo++;
+      if (combo > maxCombo) maxCombo = combo; // ★ここを追加
       let speedMultiplier = Math.min(1.0 + (combo * 0.2), 3.0);
       let finalPoints = Math.floor(basePoints * speedMultiplier);
       msgHTML = `<span style="color:#f1c40f">⚡ FAST!! (+${finalPoints}点 / 速度x${speedMultiplier.toFixed(1)})</span>`;
@@ -782,8 +783,8 @@ function endGame() {
   isPlayingGame = false; isWaitingForAnswer = false;
   document.getElementById('instrument-select').disabled = false; 
   document.getElementById('keyboard-mode-select').disabled = false;
-  document.getElementById('time').innerText = "0";
-  const finalCombo = combo; // ★ スコア送信用に、リセット前の最終コンボ数を保持しておく
+  document.getElementById('time').innerText = "0";document.getElementById('time').innerText = "0";
+  const finalCombo = maxCombo; // ★ 最終時点ではなく、ゲーム中の最大コンボ数を送信する
   combo = 0; document.getElementById('combo-count-large').innerText = combo;
   updateBackgroundByCombo(0);
   updateDifficulty(); // ★ フリープレイ用に、選択中モードの全音をアクティブ表示にする
@@ -1170,39 +1171,71 @@ window.addEventListener('keyup', (e) => {
   }
 });
 
-// ==== ★ ランキング取得（Leaderboard Fetch）====
+// ==== ★ ランキング取得とページネーション ====
+let globalRankingData = []; // 取得した全データを保存しておく箱
+let currentRankingDisplayCount = 10; // 現在何件目まで表示しているか
+
 function loadLeaderboard() {
   const listEl = document.getElementById('global-ranking-list');
   if (!listEl) return;
 
-  fetch(GAS_URL) // デフォルトでGETリクエストになります
+  fetch(GAS_URL)
     .then(response => response.json())
     .then(data => {
-      if (data.length === 0) {
-        listEl.innerHTML = '<div style="text-align:center; color:#bdc3c7;">まだ記録がありません</div>';
-        return;
-      }
-      let html = '';
-      data.forEach((entry, index) => {
-        // 1〜3位は色とアイコンを豪華にする
-        let rankColor = index === 0 ? '#f1c40f' : index === 1 ? '#bdc3c7' : index === 2 ? '#cd7f32' : '#ecf0f1';
-        let rankIcon = index === 0 ? '👑' : index + 1;
-        
-        html += `<div style="display:flex; justify-content:space-between; background:rgba(255,255,255,0.05); padding:8px; margin-bottom:5px; border-radius:5px; align-items:center;">
-                   <div style="font-weight:bold; color:${rankColor}; width:30px; font-size:1.2em;">${rankIcon}</div>
-                   <div style="flex-grow:1; text-align:left; font-weight:bold;">${entry.name}</div>
-                   <div style="text-align:right;">
-                     <span style="color:#1abc9c; font-weight:bold; font-size:1.1em;">${entry.score}</span><br>
-                     <span style="font-size:0.7em; color:#95a5a6;">${entry.combo} Combo</span>
-                   </div>
-                 </div>`;
-      });
-      listEl.innerHTML = html;
+      globalRankingData = data;
+      currentRankingDisplayCount = 10; // 読み込み直後は10件に戻す
+      renderLeaderboard();
     })
     .catch(err => {
       console.error(err);
       listEl.innerHTML = '<div style="text-align:center; color:#e74c3c;">ランキング取得エラー</div>';
     });
+}
+
+function renderLeaderboard() {
+  const listEl = document.getElementById('global-ranking-list');
+  const btn = document.getElementById('show-more-ranking-btn');
+  if (!listEl) return;
+
+  if (globalRankingData.length === 0) {
+    listEl.innerHTML = '<div style="text-align:center; color:#bdc3c7;">まだ記録がありません</div>';
+    if (btn) btn.style.display = 'none';
+    return;
+  }
+
+  let html = '';
+  // 現在の表示件数分だけデータを切り取る
+  const displayData = globalRankingData.slice(0, currentRankingDisplayCount);
+
+  displayData.forEach((entry, index) => {
+    let rankColor = index === 0 ? '#f1c40f' : index === 1 ? '#bdc3c7' : index === 2 ? '#cd7f32' : '#ecf0f1';
+    let rankIcon = index === 0 ? '👑' : index + 1;
+    
+    html += `<div style="display:flex; justify-content:space-between; background:rgba(255,255,255,0.05); padding:8px; margin-bottom:5px; border-radius:5px; align-items:center;">
+               <div style="font-weight:bold; color:${rankColor}; width:30px; font-size:1.2em;">${rankIcon}</div>
+               <div style="flex-grow:1; text-align:left; font-weight:bold;">${entry.name}</div>
+               <div style="text-align:right;">
+                 <span style="color:#1abc9c; font-weight:bold; font-size:1.1em;">${entry.score}</span><br>
+                 <span style="font-size:0.7em; color:#95a5a6;">${entry.combo} Combo</span>
+               </div>
+             </div>`;
+  });
+  listEl.innerHTML = html;
+
+  // まだ表示していないデータが残っていれば「もっと見る」ボタンを表示
+  if (btn) {
+    if (globalRankingData.length > currentRankingDisplayCount) {
+      btn.style.display = 'block';
+    } else {
+      btn.style.display = 'none';
+    }
+  }
+}
+
+// もっと見るボタンが押された時の処理
+function showMoreRankings() {
+  currentRankingDisplayCount += 10; // 表示件数を10件増やす
+  renderLeaderboard(); // 画面を再描画
 }
 
 // アプリ起動時に1回だけランキングを読み込む
