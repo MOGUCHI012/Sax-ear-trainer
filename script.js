@@ -222,7 +222,8 @@ const STAGE3_UNLOCK_SCORE = 50000;
 // ステージ3で基準音として使う音（クロマチック12音：C〜B）
 const stage3ReferencePool = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
 let bestScore = parseInt(localStorage.getItem('saxEarTrainBestScore') || '0', 10);
- 
+
+
 // ==== ★ 外部送信（GAS/Discord）設定 ====
 // TODO: 実際のGASウェブアプリURL / Discord Webhook URLに置き換えてください
 const GAS_URL = "https://script.google.com/macros/s/AKfycbwOSfnOMJRppzGwi8zMp8CyOYQZT7rvt8a-OVx7WLTYFHIlegLEcjc7GQOwu8N_UACOKg/exec";
