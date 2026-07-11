@@ -40,16 +40,20 @@
 <audio id="bgm-audio" src="jazz-bgm.mp3" loop preload="auto"></audio>
  
 <div id="app-container">
+  <!-- ★サイドバー（左側）ここから -->
   <div id="history-sidebar">
-    <h3>🏆 部内 トップ10</h3>
+    <h3>🏆 部内 トップランキング</h3>
     <div id="global-ranking-list">
       <div style="color:#bdc3c7; text-align:center; font-size:0.9em;">読み込み中...</div>
     </div>
+    <button id="show-more-ranking-btn" class="link-btn" style="display:none; width:100%; margin-top:10px; font-size:0.85em; padding:6px;" onclick="showMoreRankings()">🔽 もっと見る</button>
     
     <h3 style="margin-top: 20px; font-size: 1.0em;">📈 あなたのローカル履歴</h3>
     <div id="history-list"></div>
   </div>
- 
+  <!-- ★サイドバー（左側）ここまで -->
+
+  <!-- ★メインゲームボード（中央）ここから -->
   <div id="main-game-board">
  
     <!-- ==== ★ スタート画面（タイトル画面）==== -->
