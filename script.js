@@ -783,41 +783,74 @@ function endGame() {
   clearInterval(timerInterval);
   isPlayingGame = false; 
   isWaitingForAnswer = false;
-
+  
   // UIのロックを解除
-  document.getElementById('instrument-select').disabled = false;
+  document.getElementById('instrument-select').disabled = false; 
   document.getElementById('keyboard-mode-select').disabled = false;
   document.getElementById('time').innerText = "0";
-
-  const finalCombo = maxCombo; // 最大コンボ数
-  combo = 0; 
-  document.getElementById('combo-count-large').innerText = combo;
   
-  // 背景や難易度を初期化
+  const finalCombo = maxCombo; // 最大コンボ数
+  combo = 0; document.getElementById('combo-count-large').innerText = combo;
   updateBackgroundByCombo(0);
-  updateDifficulty();
-
-  // ローカル履歴に保存（元のコードを復元）
+  updateDifficulty(); // フリープレイ用全音アクティブ化
+  
+  // ローカル履歴の保存
   const dateStr = new Date().toLocaleString();
-  // ※変数 streak が undefined にならないよう finalCombo を代入しています
   scoreHistory.push({ score: score, streak: finalCombo, date: dateStr });
   localStorage.setItem('saxEarTrainHistory', JSON.stringify(scoreHistory));
-  updateHistoryUI();
-
-  // ★ （もしステージ解放などの処理があれば、ここに残してください）
-
-  // ★ ここから変更：直接画面に書くのではなく、モーダルにデータを渡して開く
-  document.getElementById('game-message-area').innerHTML = `<button class="action-btn" onclick="resetToTitle()" style="margin-top:10px;">タイトルに戻る</button>`;
+  updateHistoryUI(); 
   
-  // モーダルにスコアとコンボをセット
+  // ★ ベストスコア更新とステージ解放判定（完全復元）
+  const wasStage2Unlocked = bestScore >= STAGE2_UNLOCK_SCORE;
+  const wasStage3Unlocked = bestScore >= STAGE3_UNLOCK_SCORE;
+  if (score > bestScore) {
+    bestScore = score;
+    localStorage.setItem('saxEarTrainBestScore', String(bestScore));
+  }
+  if(typeof renderStageLockState === 'function') renderStageLockState();
+  if(typeof updateGameStatusLine === 'function') updateGameStatusLine();
+  
+  const stage2JustUnlocked = !wasStage2Unlocked && bestScore >= STAGE2_UNLOCK_SCORE;
+  const stage3JustUnlocked = !wasStage3Unlocked && bestScore >= STAGE3_UNLOCK_SCORE;
+  
+  // ★ ランク判定（完全復元）
+  let rankName = ""; let rankColor = ""; let rankDesc = "";
+  if (score < 10000) { rankName = "🥉 ビギナー"; rankColor = "#cd7f32"; rankDesc = "近い音程の距離感が掴めてきたレベル"; }
+  else if (score < 25000) { rankName = "🥈 レギュラー"; rankColor = "#bdc3c7"; rankDesc = "1オクターブ内の跳躍に迷いがなくなってきたレベル"; }
+  else if (score < 40000) { rankName = "🏅 ベテラン"; rankColor = "#3498db"; rankDesc = "拡張レンジでの跳躍にも素早く反応できる、瞬時の判断力が身についてきた証！"; }
+  else if (score < 50000) { rankName = "🥇 エキスパート"; rankColor = "#f1c40f"; rankDesc = "基準のドに対する相対音感が強固になり、ほぼノータイムで音が取れるレベル"; }
+  else if (score < 100000) { rankName = "👑 マスター"; rankColor = "#e67e22"; rankDesc = "考えなくても指が動く、完璧な相対音感と反射神経の持ち主"; }
+  else if (score < 150000) { rankName = "🏆 グランドマスター"; rankColor = "#8e44ad"; rankDesc = "ステージ3の惑わせにも動じない、名手と呼ぶにふさわしい領域"; }
+  else { rankName = "✨ 神の耳"; rankColor = "#ff4500"; rankDesc = "システムと完全に同化。限界スピードでの連続正解を維持できる究極の耳！"; }
+  
+  // ランクと解放情報を元のメッセージエリアに表示（モーダルが開いても背景として見えるように）
+  let endMsg = `<div class="rank-display" style="color:${rankColor};">${rankName}<br><span style="font-size:0.55em; font-weight:normal; color:#ecf0f1;">${rankDesc}</span></div>`;
+  if (stage2JustUnlocked) { endMsg += `<div style="color:#2ecc71; font-weight:bold; margin-bottom:10px;">🔓 ステージ2がアンロックされました！</div>`; }
+  if (stage3JustUnlocked) { endMsg += `<div style="color:#2ecc71; font-weight:bold; margin-bottom:10px;">🔓 ステージ3がアンロックされました！</div>`; }
+  document.getElementById('game-message-area').innerHTML = endMsg;
+  
+  // モーダルにスコアデータをセット
   document.getElementById('modal-final-score').innerText = score;
   document.getElementById('modal-final-combo').innerText = finalCombo;
   
-  // 前回の名前が残っていればセットして、モーダルを表示
-  const savedName = localStorage.getItem('saxEarTrainerName') || '';
+  // 前回の名前をセット（変数を元の 'saxEarTrainPlayerName' に修正）
+  const savedName = localStorage.getItem('saxEarTrainPlayerName') || '';
   document.getElementById('player-name-input').value = savedName;
-  document.getElementById('submit-status-msg').innerText = ''; // メッセージリセット
+  document.getElementById('submit-status-msg').innerText = ''; 
+  
+  // モーダルを表示
   document.getElementById('game-over-modal-overlay').style.display = 'flex';
+}
+
+// ==== ★ モーダル用のボタンアクション関数を追加 ====
+function playAgainFromModal() {
+  document.getElementById('game-over-modal-overlay').style.display = 'none';
+  startSequence(); // 「もう一度プレイ」の正しい処理
+}
+
+function returnToTitleFromModal() {
+  document.getElementById('game-over-modal-overlay').style.display = 'none';
+  returnToStartScreen(); // 「ステージ選択に戻る」の正しい処理
 }
 
 // ==== ★ 新規追加：モーダル操作とスコア送信関数 ====
