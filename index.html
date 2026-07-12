@@ -221,7 +221,10 @@
     <input type="text" id="player-name-input" placeholder="名前を入力 (10文字以内)" maxlength="10" style="padding:10px; font-size:1.1em; width:80%; border-radius:5px; border:1px solid #7f8c8d; background:#34495e; color:#ecf0f1; margin-bottom:15px; text-align:center;">
     
     <button id="submit-score-btn" class="action-btn" style="width:100%; margin-bottom:10px;" onclick="submitScore()">📤 ランキングにスコアを送信</button>
-    <button class="link-btn" style="width:100%; text-align:center; box-sizing:border-box;" onclick="closeGameOverModal()">もう一度プレイ (送信せずに閉じる)</button>
+    
+    <!-- ★ ナビゲーションを2つのボタンに明確化 -->
+    <button class="action-btn" style="width:100%; margin-bottom:10px; background-color:#3498db;" onclick="playAgainFromModal()">🔁 もう一度プレイ</button>
+    <button class="link-btn" style="width:100%; text-align:center; box-sizing:border-box;" onclick="returnToTitleFromModal()">🏠 ステージ選択に戻る</button>
     
     <div id="submit-status-msg" style="margin-top:10px; font-size:0.9em; min-height:20px; color:#f1c40f;"></div>
   </div>

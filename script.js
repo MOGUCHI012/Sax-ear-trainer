@@ -860,8 +860,18 @@ function closeGameOverModal() {
 }
 
 function submitScore() {
-  const playerName = document.getElementById('player-name-input').value.trim();
+  // 画面のスコアと、保存されている自己ベストを取得
+  const currentScore = parseInt(document.getElementById('modal-final-score').innerText);
+  const currentBest = parseInt(localStorage.getItem('saxEarTrainBestScore')) || 0;
   const statusEl = document.getElementById('submit-status-msg');
+
+  // ★ 追加：自己ベスト（最高得点）を下回る場合は送信をブロックする
+  if (currentScore <= currentBest && currentScore > 0) {
+    statusEl.innerText = '⚠️ ランキング送信は自己ベスト更新時のみ可能です！';
+    return; // ここで処理を強制終了
+  }
+
+  const playerName = document.getElementById('player-name-input').value.trim();
   
   if (!playerName) {
     statusEl.innerText = '⚠️ 名前を入力してください';
@@ -871,7 +881,6 @@ function submitScore() {
   // 名前を保存（次回から入力不要に）
   localStorage.setItem('saxEarTrainerName', playerName);
   
-  const finalScore = parseInt(document.getElementById('modal-final-score').innerText);
   const finalCombo = parseInt(document.getElementById('modal-final-combo').innerText);
   
   statusEl.innerText = '送信中... (Sending...)';
@@ -879,13 +888,20 @@ function submitScore() {
   fetch(GAS_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain' },
-    body: JSON.stringify({ name: playerName, score: finalScore, combo: finalCombo })
+    body: JSON.stringify({ name: playerName, score: currentScore, combo: finalCombo })
   })
   .then(() => {
     statusEl.innerText = '✅ 送信完了！ランキングを更新します...';
-    loadLeaderboard(); // ランキングを最新に
+    if(typeof loadLeaderboard === 'function') loadLeaderboard(); // ランキングを最新に
+    
     setTimeout(() => {
-      closeGameOverModal(); // 1.5秒後に自動で閉じる
+      // ★ 修正：送信完了後は、単に閉じるのではなくタイトル画面へ戻す
+      if(typeof returnToTitleFromModal === 'function') {
+        returnToTitleFromModal();
+      } else {
+        document.getElementById('game-over-modal-overlay').style.display = 'none';
+        returnToStartScreen();
+      }
     }, 1500);
   })
   .catch(err => {
@@ -893,7 +909,6 @@ function submitScore() {
     statusEl.innerText = '⚠️ 送信に失敗しました。時間をおいて再試行してください。';
   });
 }
- 
 
  
 // ==== ★ PC用キー割り当て（カスタマイズ可能）====
