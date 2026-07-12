@@ -781,15 +781,31 @@ function updateHistoryUI() {
  
 function endGame() {
   clearInterval(timerInterval);
-  isGameActive = false;
-  document.getElementById('time').innerText = "0";
-  
-  const finalCombo = maxCombo; // 最大コンボ数
-  combo = 0; document.getElementById('combo-count-large').innerText = combo;
+  isPlayingGame = false; 
+  isWaitingForAnswer = false;
 
-  // ローカル履歴に保存
-  saveScoreToHistory(score, finalCombo);
+  // UIのロックを解除
+  document.getElementById('instrument-select').disabled = false;
+  document.getElementById('keyboard-mode-select').disabled = false;
+  document.getElementById('time').innerText = "0";
+
+  const finalCombo = maxCombo; // 最大コンボ数
+  combo = 0; 
+  document.getElementById('combo-count-large').innerText = combo;
   
+  // 背景や難易度を初期化
+  updateBackgroundByCombo(0);
+  updateDifficulty();
+
+  // ローカル履歴に保存（元のコードを復元）
+  const dateStr = new Date().toLocaleString();
+  // ※変数 streak が undefined にならないよう finalCombo を代入しています
+  scoreHistory.push({ score: score, streak: finalCombo, date: dateStr });
+  localStorage.setItem('saxEarTrainHistory', JSON.stringify(scoreHistory));
+  updateHistoryUI();
+
+  // ★ （もしステージ解放などの処理があれば、ここに残してください）
+
   // ★ ここから変更：直接画面に書くのではなく、モーダルにデータを渡して開く
   document.getElementById('game-message-area').innerHTML = `<button class="action-btn" onclick="resetToTitle()" style="margin-top:10px;">タイトルに戻る</button>`;
   
