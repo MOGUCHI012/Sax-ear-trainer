@@ -85,11 +85,10 @@ select.game-setting { padding: 8px; font-size: 0.9em; border-radius: 5px; border
 /* ==== ★ ゲームプレイ中のスマホ横画面レイアウト最適化 ==== */
 @media screen and (max-width: 900px) and (orientation: landscape) {
   body { padding: 8px 10px; }
-  #app-container { flex-direction: row; flex-wrap: nowrap; align-items: flex-start; gap: 8px; }
-  /* ゲーム中は横幅を鍵盤に使いたいので、サイドバーは畳んで省スペース化 */
-  #history-sidebar, #analytics-sidebar { flex: 0 0 130px; min-width: 130px; max-height: 60vh; padding: 8px; font-size: 0.75em; }
-  #history-sidebar h3, .analytics-box h4 { font-size: 0.85em; }
-  #main-game-board { flex: 1; padding: 10px; min-width: 0; }
+  #app-container { flex-direction: row; flex-wrap: nowrap; align-items: flex-start; gap: 0; }
+  /* ★ 横画面では鍵盤に全幅を使いたいので、ランキング/苦手な音サイドバーは非表示にする */
+  #history-sidebar, #analytics-sidebar { display: none; }
+  #main-game-board { flex: 1; width: 100%; padding: 10px; min-width: 0; }
   .start-title { font-size: 1.3em; }
   .start-subtitle { font-size: 0.8em; margin-bottom: 10px; }
   .quick-rules { padding: 8px 10px; font-size: 0.78em; gap: 4px; margin-bottom: 8px; }
@@ -98,11 +97,18 @@ select.game-setting { padding: 8px; font-size: 0.9em; border-radius: 5px; border
   .stage-name { font-size: 1em; }
   .stage-desc { font-size: 0.72em; }
   .stats-bar, .sub-stats-bar { font-size: 0.8em; }
+  /* ★ サイドバーを隠す代わりに、コンボ数をゲーム画面内に表示する */
+  #combo-inline-stat { display: inline-flex !important; }
   #game-message-area { font-size: 0.95em; min-height: 44px; padding-top: 8px; margin-top: 8px; }
   .keys { margin-top: 8px; }
-  .key { height: 84px; padding-bottom: 6px; font-size: 0.75em; }
-  .key.black-key { height: 52px; width: 74%; max-width: 36px; }
+  .key { height: 90px; padding-bottom: 6px; font-size: 0.78em; }
+  .key.black-key { height: 56px; width: 76%; max-width: 40px; }
   button.action-btn { padding: 10px 20px; font-size: 1em; }
+}
+
+/* ★ プレイ中のコンボ表示（インライン版）。通常時は非表示で、横画面モバイル時のみ表示される */
+#combo-inline-stat {
+  display: none; align-items: center; gap: 4px; font-weight: bold; color: #f1c40f;
 }
 
 #game-message-area { margin-top: 15px; font-size: 1.1em; font-weight: bold; min-height: 60px; line-height: 1.4; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px; }

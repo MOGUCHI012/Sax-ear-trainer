@@ -773,6 +773,8 @@ function updateStats() {
   document.getElementById('score').innerText = score;
   document.getElementById('time').innerText = timeLeft;
   document.getElementById('combo-count-large').innerText = combo;
+  const comboInlineEl = document.getElementById('combo-inline-value');
+  if (comboInlineEl) comboInlineEl.innerText = combo;
   document.getElementById('streak').innerText = streak;
   updateBackgroundByCombo(combo);
 }
