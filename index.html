@@ -74,6 +74,7 @@
  
       <button class="link-btn" onpointerdown="event.preventDefault(); showRulesModal();">📖 詳しいルールを見る (How to play)</button>
       <button class="link-btn" onclick="showKeybindModal();">⌨️ キー割り当てをカスタマイズ (PC)</button>
+      <button class="link-btn" onclick="openPracticePiano();">🎹 練習用ピアノ</button>
       <br>
       <button id="bgm-toggle-btn" onclick="toggleBGM();">🔊 BGM: ON</button>
  
@@ -139,7 +140,7 @@
  
       <div id="countdown"></div>
       
-      <div id="game-message-area" style="min-height:30px; display:flex; flex-direction:column; align-items:center; justify-content:center;">楽器とモードを選んでスタート！</div>
+      <div id="game-message-area" style="display:flex; flex-direction:column; align-items:center; justify-content:center;">楽器とモードを選んでスタート！</div>
  
       <div class="keys">
         <div class="key-group" data-white-note="LowA">
@@ -188,7 +189,31 @@
         </div>
       </div>
     </div>
+
+    <!-- ==== ★ 練習用ピアノ画面（ゲームプレイとは無関係にいつでも鍵盤を鳴らせる）==== -->
+    <div id="practice-piano-screen" style="display:none;">
+      <h1 class="start-title" style="font-size:1.5em;">🎹 練習用ピアノ</h1>
+      <p class="start-subtitle" style="margin-bottom:14px;">スコアやタイマーには一切影響しません。ピッチ確認に自由にどうぞ。</p>
+
+      <div class="header-section">
+        <select id="practice-instrument-select" class="game-setting" onchange="renderPracticeKeys()">
+          <option value="C" selected>C管 (ピアノ等)</option>
+          <option value="Bb">B♭管 (サックス等)</option>
+          <option value="Eb">E♭管 (アルト等)</option>
+          <option value="F">F管 (ホルン等)</option>
+        </select>
+        <select id="practice-octave-select" class="game-setting" onchange="renderPracticeKeys()">
+          <option value="2" selected>表示: 2オクターブ</option>
+          <option value="3">表示: 3オクターブ</option>
+        </select>
+      </div>
+
+      <div id="practice-keys-container" class="keys"></div>
+
+      <button class="link-btn" onclick="closePracticePiano();" style="margin-top:16px;">🔙 ステージ選択に戻る</button>
+    </div>
   </div>
+
  
   <div id="analytics-sidebar">
     <div id="combo-container">

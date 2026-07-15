@@ -109,31 +109,29 @@ function finishTutorial() {
 function playBGM() {
   if (!bgmEnabled) return;
   clearInterval(bgmFadeInterval);
+  bgmAudio.muted = false;
   try { bgmAudio.volume = BGM_VOLUME; } catch (e) {}
   bgmAudio.play().catch(() => {}); // 自動再生が拒否された場合も静かに無視する
 }
 
-// ★ fade=trueの時（ゲーム開始時）は完全停止させず、ごく小さい音量でループを継続する。
-//   iOSでは<audio>要素の再生が完全に途切れると音声セッションが"ambient"扱いに戻り、
-//   サイレントスイッチや一部のイヤホン/Bluetooth機器でWeb Audio API（効果音）が
-//   聞こえなくなることがあるため、その対策として「無音に近い音量」で再生を継続する。
-const BGM_SILENT_FLOOR = 0.001;
+// ★ fade=true（ゲーム開始時）は、audio要素の再生自体はpause()せず継続したまま
+//   muted=trueで即座に無音化する。
+//   iOSは<audio>要素のvolumeプロパティの変更を無視する仕様があり、
+//   「音量をフェードで下げる」方式では実質無音化できずBGMが鳴り続けてしまう不具合があったため、
+//   確実に効くmutedプロパティに切り替えた。
+//   再生自体を継続することで、iOSの音声セッション(playback)を維持し、
+//   Web Audio API（効果音）がサイレントスイッチ等で無音化されるのを防ぐ効果も保っている。
 function stopBGM(fade = true) {
   clearInterval(bgmFadeInterval);
-  if (!fade) { bgmAudio.pause(); try { bgmAudio.volume = BGM_VOLUME; } catch (e) {} return; }
-
-  const FADE_STEPS = 8;
-  const STEP_MS = 50;
-  let step = 0;
-  const startVolume = bgmAudio.volume;
-  bgmFadeInterval = setInterval(() => {
-    step++;
-    try { bgmAudio.volume = Math.max(BGM_SILENT_FLOOR, startVolume * (1 - step / FADE_STEPS)); } catch (e) {}
-    if (step >= FADE_STEPS) {
-      clearInterval(bgmFadeInterval);
-      // ★ pause()はせず、無音に近い音量のまま再生を継続する（iOSの音声セッション維持のため）
-    }
-  }, STEP_MS);
+  if (!fade) {
+    // ユーザーが明示的にOFFにした場合は完全停止する
+    bgmAudio.pause();
+    bgmAudio.muted = false;
+    try { bgmAudio.volume = BGM_VOLUME; } catch (e) {}
+    return;
+  }
+  // ★ ゲーム開始時：最優先事項として、必ず即座に無音化する
+  bgmAudio.muted = true;
 }
 
 function toggleBGM() {
@@ -522,6 +520,80 @@ function returnToStartScreen() {
   unlockBodyScroll(); // ★ 念のためここでもロック解除
   renderStageLockState();
   playBGM();
+}
+
+// ==== ★ 練習用ピアノ（ゲームプレイとは無関係にいつでも鍵盤を鳴らせる）====
+// 白鍵のオクターブ内オフセットとラベル、およびその白鍵の直後にある黒鍵のオフセット
+const PRACTICE_WHITE_PATTERN = [
+  { offset: 0, name: 'C' }, { offset: 2, name: 'D' }, { offset: 4, name: 'E' },
+  { offset: 5, name: 'F' }, { offset: 7, name: 'G' }, { offset: 9, name: 'A' }, { offset: 11, name: 'B' }
+];
+const PRACTICE_BLACK_AFTER = { 0: 1, 2: 3, 5: 6, 7: 8, 9: 10 }; // 白鍵オフセット → 黒鍵オフセット（ない場合はキーなし）
+
+function openPracticePiano() {
+  document.getElementById('start-screen').style.display = 'none';
+  document.getElementById('practice-piano-screen').style.display = 'block';
+  renderPracticeKeys();
+}
+
+function closePracticePiano() {
+  document.getElementById('practice-piano-screen').style.display = 'none';
+  document.getElementById('start-screen').style.display = 'block';
+  renderStageLockState();
+}
+
+// ★ ゲーム本編のnoteStats等とは完全に独立した、練習用の周波数計算
+function getPracticeFrequency(semitoneFromC) {
+  const instrument = document.getElementById('practice-instrument-select').value;
+  return baseFreqs[instrument] * Math.pow(2, semitoneFromC / 12);
+}
+
+function renderPracticeKeys() {
+  const octaves = parseInt(document.getElementById('practice-octave-select').value, 10) || 2;
+  const container = document.getElementById('practice-keys-container');
+  if (!container) return;
+  container.innerHTML = '';
+
+  for (let oct = 0; oct < octaves; oct++) {
+    PRACTICE_WHITE_PATTERN.forEach(w => {
+      const semitone = oct * 12 + w.offset;
+
+      const group = document.createElement('div');
+      group.className = 'key-group group-visible';
+
+      const whiteKey = document.createElement('div');
+      whiteKey.className = 'key visible-key active-key';
+      whiteKey.innerHTML = `<span>${w.name}${oct + 1}</span>`;
+      whiteKey.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        playPracticeNote(semitone, whiteKey);
+      });
+      group.appendChild(whiteKey);
+
+      if (PRACTICE_BLACK_AFTER[w.offset] !== undefined) {
+        const blackSemitone = oct * 12 + PRACTICE_BLACK_AFTER[w.offset];
+        const blackKey = document.createElement('div');
+        blackKey.className = 'key black-key visible-key active-key';
+        blackKey.addEventListener('pointerdown', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          playPracticeNote(blackSemitone, blackKey);
+        });
+        group.appendChild(blackKey);
+      }
+
+      container.appendChild(group);
+    });
+  }
+}
+
+function playPracticeNote(semitoneFromC, btnEl) {
+  initAudio();
+  playSaxTone(getPracticeFrequency(semitoneFromC), 0.6);
+  if (btnEl) {
+    btnEl.classList.add('correct-highlight');
+    setTimeout(() => btnEl.classList.remove('correct-highlight'), 300);
+  }
 }
 
 function startSequence() {
