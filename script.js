@@ -1,29 +1,55 @@
 let audioCtx;
 const MASTER_A = 442.00;
- 
+
+// ==== ★ iOSのダブルタップ拡大を防止する ====
+// touch-action:manipulationだけでは防ぎきれないケースがあるため、
+// 短時間に連続したtouchendが発生した場合はズームジェスチャーとみなしてキャンセルする
+let lastTouchEndTime = 0;
+document.addEventListener('touchend', function (e) {
+  const now = Date.now();
+  if (now - lastTouchEndTime <= 350) {
+    e.preventDefault();
+  }
+  lastTouchEndTime = now;
+}, { passive: false });
+
+// ==== ★ ゲームプレイ中の画面スクロールをロックする ====
+function lockBodyScroll() {
+  document.documentElement.classList.add('no-scroll');
+  document.body.classList.add('no-scroll');
+}
+function unlockBodyScroll() {
+  document.documentElement.classList.remove('no-scroll');
+  document.body.classList.remove('no-scroll');
+}
+// プレイ中（カウントダウン含む）はtouchmoveによるスクロール・引っ張りも無効化する
+document.addEventListener('touchmove', function (e) {
+  if (isPlayingGame || isCountingDown) {
+    e.preventDefault();
+  }
+}, { passive: false });
+
 // ==== ★ BGM（バックグラウンドミュージック）制御 ====
 const bgmAudio = document.getElementById('bgm-audio');
-const BGM_VOLUME = 0.22; // ★ 初期音量を引き下げ
+const BGM_VOLUME = 0.11; // ★ 音量を半分程度に引き下げ
 bgmAudio.volume = BGM_VOLUME;
 let bgmEnabled = (localStorage.getItem('saxEarTrainBgmEnabled') !== 'false'); // デフォルトON
 let bgmFadeInterval = null;
- 
+
 // ★ タップしてスタート画面：ここでAudioContextとBGMの両方を解禁する
 function handleTapToStart() {
   document.getElementById('tap-to-start-overlay').style.display = 'none';
   initAudio(); // ★ AudioContextの解禁自体は初回・2回目以降どちらも必ず行う
- 
+
   const hasSeenTutorial = localStorage.getItem('saxEarTrainHasSeenTutorial') === 'true';
   if (hasSeenTutorial) {
-    // 2回目以降はこれまで通りすぐにステージ選択画面（BGM再生）へ
     updateBgmToggleUI();
     playBGM();
   } else {
-    // 初回のみチュートリアルを挟む（BGMはチュートリアル完了後に再生）
     showTutorial();
   }
 }
- 
+
 // ==== ★ 初回チュートリアル（オンボーディング）====
 const tutorialSteps = [
   { icon: '🎷', title: 'ようこそ！', text: 'まずは自分の楽器に合わせて設定を変更しましょう（デフォルトはC管・ピアノ向けです）。ヘッダーの「楽器選択」からいつでも変更できます。' },
@@ -31,36 +57,36 @@ const tutorialSteps = [
   { icon: '🎧', title: '遊び方', text: '基準音のあとに問題音が鳴ります。素早く正しい鍵盤を押しましょう！ 連続正解でコンボが発生し、スコアも伸びていきます。' }
 ];
 let tutorialStepIndex = 0;
- 
+
 function showTutorial() {
   tutorialStepIndex = 0;
   renderTutorialStep();
   document.getElementById('tutorial-overlay').classList.add('visible');
 }
- 
+
 function renderTutorialStep() {
   const step = tutorialSteps[tutorialStepIndex];
   const isLastStep = tutorialStepIndex === tutorialSteps.length - 1;
- 
+
   document.getElementById('tutorial-step-content').innerHTML = `
     <div class="tutorial-icon">${step.icon}</div>
     <h2 class="tutorial-step-title">${step.title}</h2>
     <p class="tutorial-step-text">${step.text}</p>
   `;
- 
+
   document.querySelectorAll('#tutorial-overlay .dot').forEach((dot, i) => {
     dot.classList.toggle('active', i === tutorialStepIndex);
   });
- 
+
   document.getElementById('tutorial-next-btn').innerText = isLastStep ? 'はじめる' : '次へ';
   document.getElementById('tutorial-skip-btn').style.visibility = isLastStep ? 'hidden' : 'visible';
 }
- 
+
 function jumpToTutorialStep(i) {
   tutorialStepIndex = i;
   renderTutorialStep();
 }
- 
+
 function tutorialNext() {
   const isLastStep = tutorialStepIndex === tutorialSteps.length - 1;
   if (isLastStep) {
@@ -70,46 +96,46 @@ function tutorialNext() {
     renderTutorialStep();
   }
 }
- 
+
 function skipTutorial() { finishTutorial(); }
- 
+
 function finishTutorial() {
   localStorage.setItem('saxEarTrainHasSeenTutorial', 'true');
   document.getElementById('tutorial-overlay').classList.remove('visible');
-  // ★ チュートリアル完了後にBGMを再生してステージ選択画面へ
   updateBgmToggleUI();
   playBGM();
 }
- 
+
 function playBGM() {
   if (!bgmEnabled) return;
   clearInterval(bgmFadeInterval);
   try { bgmAudio.volume = BGM_VOLUME; } catch (e) {}
   bgmAudio.play().catch(() => {}); // 自動再生が拒否された場合も静かに無視する
 }
- 
+
+// ★ fade=trueの時（ゲーム開始時）は完全停止させず、ごく小さい音量でループを継続する。
+//   iOSでは<audio>要素の再生が完全に途切れると音声セッションが"ambient"扱いに戻り、
+//   サイレントスイッチや一部のイヤホン/Bluetooth機器でWeb Audio API（効果音）が
+//   聞こえなくなることがあるため、その対策として「無音に近い音量」で再生を継続する。
+const BGM_SILENT_FLOOR = 0.001;
 function stopBGM(fade = true) {
   clearInterval(bgmFadeInterval);
   if (!fade) { bgmAudio.pause(); try { bgmAudio.volume = BGM_VOLUME; } catch (e) {} return; }
- 
-  // ★ iOS Safariはaudio要素のvolumeプロパティを変更できない（システム音量に固定される）仕様のため、
-  //    「音量が下がったら止める」という判定だと永遠に止まらなくなる。
-  //    そのため音量変化には依存せず、一定のステップ数が経過したら必ずpause()するようにする。
+
   const FADE_STEPS = 8;
   const STEP_MS = 50;
   let step = 0;
   const startVolume = bgmAudio.volume;
   bgmFadeInterval = setInterval(() => {
     step++;
-    try { bgmAudio.volume = Math.max(0, startVolume * (1 - step / FADE_STEPS)); } catch (e) {}
+    try { bgmAudio.volume = Math.max(BGM_SILENT_FLOOR, startVolume * (1 - step / FADE_STEPS)); } catch (e) {}
     if (step >= FADE_STEPS) {
       clearInterval(bgmFadeInterval);
-      bgmAudio.pause();
-      try { bgmAudio.volume = BGM_VOLUME; } catch (e) {}
+      // ★ pause()はせず、無音に近い音量のまま再生を継続する（iOSの音声セッション維持のため）
     }
   }, STEP_MS);
 }
- 
+
 function toggleBGM() {
   bgmEnabled = !bgmEnabled;
   localStorage.setItem('saxEarTrainBgmEnabled', String(bgmEnabled));
@@ -118,10 +144,10 @@ function toggleBGM() {
   if (bgmEnabled && startScreenVisible) {
     playBGM();
   } else if (!bgmEnabled) {
-    stopBGM(false);
+    stopBGM(false); // ユーザーが明示的にOFFにした場合のみ完全停止する
   }
 }
- 
+
 function updateBgmToggleUI() {
   const btn = document.getElementById('bgm-toggle-btn');
   if (!btn) return;
@@ -129,36 +155,34 @@ function updateBgmToggleUI() {
   btn.classList.toggle('bgm-off', !bgmEnabled);
 }
 updateBgmToggleUI();
- 
+
 const baseFreqs = {
   'C':  MASTER_A * Math.pow(2, -9/12),
   'Bb': MASTER_A * Math.pow(2, -11/12), 
   'Eb': MASTER_A * Math.pow(2, -6/12), 
   'F':  MASTER_A * Math.pow(2, -4/12)   
 };
- 
+
 const semitoneOffsets = { 
   'LowA': -3, 'LowBb': -2, 'LowB': -1,
   'C': 0, 'Db': 1, 'D': 2, 'Eb': 3, 'E': 4, 'F': 5, 'Gb': 6, 'G': 7, 'Ab': 8, 'A': 9, 'Bb': 10, 'B': 11, 
   'HighC': 12, 'HighDb': 13, 'HighD': 14, 'HighEb': 15, 'HighE': 16 
 };
 const allNoteKeys = Object.keys(semitoneOffsets); // 半音を含む全20音
- 
+
 // ★ 正誤判定のオクターブ同一視（Pitch Class Equivalence）用ヘルパー
-//   例: 'HighC' → 'C', 'LowBb' → 'Bb', 'Eb' → 'Eb'（Low/Highプレフィックスを除去するだけ）
 function getPitchClass(noteName) {
   return noteName.replace(/^(Low|High)/, '');
 }
- 
-// ★ 物理キー割り当てが可能な「白鍵」のみのリスト（黒鍵はSpace修飾で入力するため個別バインド不要）
+
+// ★ 物理キー割り当てが可能な「白鍵」のみのリスト
 const keybindableNotes = ['LowA', 'LowB', 'C', 'D', 'E', 'F', 'G', 'A', 'B', 'HighC', 'HighD', 'HighE'];
- 
-// ★ 白鍵→黒鍵（シャープ）の対応表。Spaceキーを押しながら白鍵キーを押すと該当の黒鍵になる。
-//   （実際のピアノと同様、E・Bの直後やオクターブ内の最後の白鍵には黒鍵が存在しない）
+
+// ★ 白鍵→黒鍵（シャープ）の対応表
 const sharpKeyMap = { 'LowA': 'LowBb', 'C': 'Db', 'D': 'Eb', 'F': 'Gb', 'G': 'Ab', 'A': 'Bb', 'HighC': 'HighDb', 'HighD': 'HighEb' };
 const flatToWhiteAnchor = {};
 Object.keys(sharpKeyMap).forEach(white => { flatToWhiteAnchor[sharpKeyMap[white]] = white; });
- 
+
 // ==== ★ 音名表記の切り替え（ドレミ / CDE）====
 const noteNamesSolfege = { 
   'LowA':'ラ↓', 'LowBb':'シ♭↓', 'LowB':'シ↓', 
@@ -170,100 +194,122 @@ const noteNamesAlpha   = {
   'C':'C', 'Db':'Db', 'D':'D', 'Eb':'Eb', 'E':'E', 'F':'F', 'Gb':'Gb', 'G':'G', 'Ab':'Ab', 'A':'A', 'Bb':'Bb', 'B':'B', 
   'HighC':'C↑', 'HighDb':'Db↑', 'HighD':'D↑', 'HighEb':'Eb↑', 'HighE':'E↑' 
 };
-let notationMode = localStorage.getItem('saxEarTrainNotationMode') || 'solfege'; // 'solfege' or 'alpha'
+let notationMode = localStorage.getItem('saxEarTrainNotationMode') || 'solfege';
 let noteNames = (notationMode === 'alpha') ? noteNamesAlpha : noteNamesSolfege;
- 
-// ★ 半音の入力方式：'dedicated'(専用キー) or 'modifier'(Space修飾キー)。デフォルトは専用キー。
+
+// ★ 半音の入力方式：'dedicated'(専用キー) or 'modifier'(Space修飾キー)
 let semitoneInputMode = localStorage.getItem('saxEarTrainSemitoneInputMode') || 'dedicated';
- 
+
 function handleNotationChange() {
   notationMode = document.getElementById('notation-select').value;
   localStorage.setItem('saxEarTrainNotationMode', notationMode);
   noteNames = (notationMode === 'alpha') ? noteNamesAlpha : noteNamesSolfege;
   updateNoteLabels();
-  updateAnalyticsUI(); // 苦手な音ランキングの表記も更新
+  updateAnalyticsUI();
 }
- 
-// ★ 鍵盤ボタン上の音名表示（<span id="notelabel-XXX">）を現在の表記設定に合わせて更新する
+
 function updateNoteLabels() {
   allNoteKeys.forEach(note => {
     const el = document.getElementById('notelabel-' + note);
     if (el) el.innerText = noteNames[note];
   });
 }
- 
+
 // ==== ★ 鍵盤モード別の「白鍵のみ（メジャースケール）」の並び（ピッチ順）====
 const diatonicSequencePC     = ['C', 'D', 'E', 'F', 'G', 'A', 'B', 'HighC'];
 const diatonicSequenceMobile = ['LowA', 'LowB', 'C', 'D', 'E', 'F', 'G', 'A', 'B', 'HighC', 'HighD', 'HighE'];
- 
+
 // ==== ★ 鍵盤モード別の「黒鍵を含む全音域（クロマチック）」の並び（ピッチ順）====
 const chromaticSequencePC     = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B', 'HighC'];
 const chromaticSequenceMobile = ['LowA', 'LowBb', 'LowB', 'C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B', 'HighC', 'HighDb', 'HighD', 'HighEb', 'HighE'];
- 
+
 let activeNoteSequence = diatonicSequencePC;
-let currentNoteCount = 4; // 初期状態は4音（ド〜ファ）
+let currentNoteCount = 4;
 let currentAvailableNotes = [];
- 
-let noteStats = JSON.parse(localStorage.getItem('saxEarTrainStats')) || {};
-allNoteKeys.forEach(k => { if(!noteStats[k]) noteStats[k] = { attempts: 0, correct: 0, totalTime: 0 }; });
+
+// ==== ★ 苦手な音の統計はステージごとに別々に管理する ====
+let noteStatsByStage = JSON.parse(localStorage.getItem('saxEarTrainStatsByStage')) || {};
+[1, 2, 3].forEach(stageNum => {
+  if (!noteStatsByStage[stageNum]) noteStatsByStage[stageNum] = {};
+  allNoteKeys.forEach(k => {
+    if (!noteStatsByStage[stageNum][k]) noteStatsByStage[stageNum][k] = { attempts: 0, correct: 0, totalTime: 0 };
+  });
+});
+
+// ==== ★ ステージ3専用：苦手な「音程（跳躍）」の統計 ====
+// 半音差(0〜11)ごとに正答率・反応時間を記録する
+let intervalStats = JSON.parse(localStorage.getItem('saxEarTrainIntervalStats')) || {};
+for (let i = 0; i <= 11; i++) {
+  if (!intervalStats[i]) intervalStats[i] = { attempts: 0, correct: 0, totalTime: 0 };
+}
+const intervalNames = ['完全1度', '短2度', '長2度', '短3度', '長3度', '完全4度', '増4度/減5度', '完全5度', '短6度', '長6度', '短7度', '長7度'];
+
 let scoreHistory = JSON.parse(localStorage.getItem('saxEarTrainHistory')) || [];
- 
+
 let currentQuestionNote = ''; let questionStartTime = 0; 
+let currentReferenceNote = 'C'; // ★ ステージ3の音程集計用：直近の基準音
+let currentIntervalClass = 0;   // ★ ステージ3の音程集計用：直近の半音差(0-11)
 let isPlayingGame = false; let isWaitingForAnswer = false; let isCountingDown = false; 
 let score = 0; let timeLeft = 30; let combo = 0; let maxCombo = 0; let streak = 0; let timerInterval;
- 
+
+// ★ 苦手な音/音程ランキングの表示件数（「もっと見る」で+3件ずつ拡張）
+let weakNotesDisplayCount = 3;
+
 // ==== ★ ステージ管理 ====
-// STAGE 1: 固定基準音(ド)・メジャースケールのみ
-// STAGE 2: 固定基準音(ド)・半音(クロマチック)あり
-// STAGE 3: ランダム基準音・半音を含む全音域
 let currentStage = 1;
 const STAGE2_UNLOCK_SCORE = 20000;
 const STAGE3_UNLOCK_SCORE = 50000;
-// ステージ3で基準音として使う音（クロマチック12音：C〜B）
 const stage3ReferencePool = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
+
+// ★ ステージ別スコア補正倍率：ステージが上がるほど純粋に難しくなり得点が伸びにくくなるため、
+//   同程度の実力ならステージ1に近いスコアが出るように底上げする。
+//   ただしステージ1の記録が簡単に抜かれないよう、完全に同等にはせず控えめに設定している。
+const STAGE_SCORE_MULTIPLIERS = { 1: 1.0, 2: 1.8, 3: 2.8 };
 let bestScore = parseInt(localStorage.getItem('saxEarTrainBestScore') || '0', 10);
 
-
 // ==== ★ 外部送信（GAS/Discord）設定 ====
-// TODO: 実際のGASウェブアプリURL / Discord Webhook URLに置き換えてください
+// TODO: Discord Webhook URLを実際の値に置き換えてください
 const GAS_URL = "https://script.google.com/macros/s/AKfycbzgR5pfOXgsSkY9HfQ0bEjd33iDNEYZD-z07rOtSAXBCnm7u_rRqvFnqgib_niUr2_kEg/exec";
 const DISCORD_WEBHOOK_URL = "YOUR_DISCORD_WEBHOOK_URL_HERE";
-const SCORE_ALERT_THRESHOLD = 200000; // このスコアを超えたらDiscordに通知
- 
-// ==== ★ 端末判定とコンボ判定猶予（レスポンスタイム閾値）====
-// iOS: Safari/WebKitのタップ遅延を考慮し最も緩く(1200ms)
-// Android: PCよりわずかに緩く(1000ms)
-// PC: 最も厳しく(800ms)
+const SCORE_ALERT_THRESHOLD = 200000;
+
+// ==== ★ 端末判定とコンボ判定猶予 ====
 function detectDeviceType() {
   const ua = navigator.userAgent || '';
-  // iPadOS 13+ は Macintosh を名乗るため maxTouchPoints で判定
   const isIOS = /iPhone|iPad|iPod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   if (isIOS) return 'ios';
   if (/Android/i.test(ua)) return 'android';
   return 'pc';
 }
- 
+
 const deviceType = detectDeviceType();
 const COMBO_TIME_THRESHOLDS = { ios: 1300, android: 1200, pc: 1000 };
+
+// ★ コンボの時間ボーナスが際限なく積み重なって終了しなくなるのを防ぐための上限。
+//   （高速で正解し続けると、消費時間よりボーナス時間の方が多くなり得るための対策）
+const MAX_TIME_LEFT = 45;
+// ★ 万一の異常発生に備えた絶対的なフェイルセーフ。ゲーム開始から一定時間で必ず終了させる。
+const MAX_GAME_DURATION_MS = 180000; // 3分
+let gameStartTimestamp = 0;
 const COMBO_TIME_THRESHOLD = COMBO_TIME_THRESHOLDS[deviceType];
 const DEVICE_LABELS = { ios: '📱 iOS (猶予1300ms)', android: '🤖 Android (猶予1200ms)', pc: '💻 PC (猶予1000ms)' };
- 
+
 document.getElementById('notation-select').value = notationMode;
 document.getElementById('semitone-mode-select').value = semitoneInputMode;
 updateNoteLabels();
 updateHistoryUI(); updateAnalyticsUI(); updateKeyboardUI(); renderStageLockState(); updateGameStatusLine();
 document.getElementById('device-badge').innerText = `判定端末: ${DEVICE_LABELS[deviceType]}`;
- 
+
 function getFrequency(noteName) {
   const instrument = document.getElementById('instrument-select').value;
   return baseFreqs[instrument] * Math.pow(2, semitoneOffsets[noteName] / 12);
 }
- 
+
 function initAudio() {
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   if (audioCtx.state === 'suspended') audioCtx.resume();
 }
- 
+
 function playTone(frequency, duration, type = 'triangle', time = null) {
   const osc = audioCtx.createOscillator(); const gainNode = audioCtx.createGain();
   osc.type = type; osc.frequency.value = frequency;
@@ -275,7 +321,7 @@ function playTone(frequency, duration, type = 'triangle', time = null) {
   gainNode.gain.exponentialRampToValueAtTime(0.00001, startTime + duration);
   osc.stop(startTime + duration);
 }
- 
+
 function playCountdownSequence(startTime) {
   const beepFreq = MASTER_A * 2; const whistleFreq = MASTER_A * Math.pow(2, 22/12);
   playTone(beepFreq, 0.1, 'sine', startTime);         
@@ -284,13 +330,11 @@ function playCountdownSequence(startTime) {
   playTone(whistleFreq, 0.3, 'sine', startTime + 3.0); 
   playTone(whistleFreq, 0.1, 'sine', startTime + 3.15); 
 }
- 
+
 function playCorrectSE() { playTone(MASTER_A * 2, 0.2, 'sine'); setTimeout(() => playTone(MASTER_A * Math.pow(2, 7/12), 0.3, 'sine'), 100); }
 function playIncorrectSE() { playTone(MASTER_A / 4, 0.4, 'sawtooth'); }
- 
+
 // ==== ★ サックス風の音色合成（Web Audio APIによるシンセシス）====
-// ノコギリ波を複数重ねて倍音を厚くし、フィルターで「リード感」、
-// ノイズで「息づかい（ブレスノイズ）」を表現してテナーサックスに寄せる
 let noiseBufferCache = null;
 function getBreathNoiseBuffer() {
   if (noiseBufferCache) return noiseBufferCache;
@@ -302,167 +346,155 @@ function getBreathNoiseBuffer() {
   noiseBufferCache = buffer;
   return buffer;
 }
- 
+
 function playSaxTone(frequency, duration, time = null) {
   const now = time !== null ? time : audioCtx.currentTime;
   const stopTime = now + duration + 0.08;
- 
-  // --- 音の芯：ノコギリ波を2基（微妙にデチューン）+ 1オクターブ下の矩形波で厚みを出す ---
+
   const osc1 = audioCtx.createOscillator(); osc1.type = 'sawtooth'; osc1.frequency.setValueAtTime(frequency, now);
   const osc2 = audioCtx.createOscillator(); osc2.type = 'sawtooth'; osc2.frequency.setValueAtTime(frequency * 1.006, now);
   const osc3 = audioCtx.createOscillator(); osc3.type = 'square';   osc3.frequency.setValueAtTime(frequency, now); osc3.detune.setValueAtTime(-1200, now);
- 
+
   const oscGain1 = audioCtx.createGain(); oscGain1.gain.value = 0.5;
   const oscGain2 = audioCtx.createGain(); oscGain2.gain.value = 0.35;
   const oscGain3 = audioCtx.createGain(); oscGain3.gain.value = 0.18;
- 
-  // --- リード感を出すフィルター：アタック時に明るく開き、すぐ落ち着く（ジャズの「エッジ」）---
+
   const filter = audioCtx.createBiquadFilter();
   filter.type = 'lowpass'; filter.Q.value = 5;
   filter.frequency.setValueAtTime(frequency * 7, now);
   filter.frequency.exponentialRampToValueAtTime(frequency * 3.2, now + 0.12);
   filter.frequency.exponentialRampToValueAtTime(frequency * 2.4, stopTime);
- 
-  // --- フォルマント風のバンドパスで「リードの鳴り」を強調 ---
+
   const formant = audioCtx.createBiquadFilter();
   formant.type = 'bandpass'; formant.frequency.value = Math.min(frequency * 2.5, 2200); formant.Q.value = 1.3;
- 
-  // --- ビブラート（サックス特有の、発音から少し遅れてかかる揺れ）---
+
   const vibratoLFO = audioCtx.createOscillator(); vibratoLFO.type = 'sine'; vibratoLFO.frequency.value = 5.7;
   const vibratoGain = audioCtx.createGain();
   vibratoGain.gain.setValueAtTime(0, now);
   vibratoGain.gain.linearRampToValueAtTime(4.5, now + 0.18);
   vibratoLFO.connect(vibratoGain);
   vibratoGain.connect(osc1.frequency); vibratoGain.connect(osc2.frequency);
- 
-  // --- ブレスノイズ（息の音）：発音直後だけ薄く混ぜる ---
+
   const noiseSource = audioCtx.createBufferSource(); noiseSource.buffer = getBreathNoiseBuffer();
   const noiseFilter = audioCtx.createBiquadFilter();
   noiseFilter.type = 'bandpass'; noiseFilter.frequency.value = frequency * 2.2; noiseFilter.Q.value = 0.7;
   const noiseGain = audioCtx.createGain();
   noiseGain.gain.setValueAtTime(0.18, now);
   noiseGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.06);
- 
-  // --- 全体のADSR的な音量エンベロープ ---
+
   const masterGain = audioCtx.createGain();
   masterGain.gain.setValueAtTime(0.0001, now);
   masterGain.gain.exponentialRampToValueAtTime(0.32, now + 0.025);
   masterGain.gain.linearRampToValueAtTime(0.26, now + 0.1);
   masterGain.gain.setValueAtTime(0.26, Math.max(now + 0.1, stopTime - 0.09));
   masterGain.gain.exponentialRampToValueAtTime(0.0001, stopTime);
- 
+
   osc1.connect(oscGain1); osc2.connect(oscGain2); osc3.connect(oscGain3);
   oscGain1.connect(filter); oscGain2.connect(filter); oscGain3.connect(filter);
   filter.connect(formant); formant.connect(masterGain);
   noiseSource.connect(noiseFilter); noiseFilter.connect(noiseGain); noiseGain.connect(masterGain);
   masterGain.connect(audioCtx.destination);
- 
+
   osc1.start(now); osc2.start(now); osc3.start(now); vibratoLFO.start(now); noiseSource.start(now);
   osc1.stop(stopTime); osc2.stop(stopTime); osc3.stop(stopTime); vibratoLFO.stop(stopTime); noiseSource.stop(now + 0.08);
 }
- 
-// ==== ★ レベルアップ効果音（コンボが3の倍数に到達した時に鳴る、通常正解音とは別の音）====
+
+// ==== ★ レベルアップ効果音 ====
 function playLevelUpSFX(comboCount) {
   const now = audioCtx.currentTime;
-  const tier = Math.floor(comboCount / 3); // コンボが重なるほど音程を少し上げて盛り上げる
+  const tier = Math.floor(comboCount / 3);
   const pitchShift = Math.pow(2, Math.min(tier - 1, 4) / 12);
-  const notes = [523.25, 659.25, 783.99, 1046.50]; // C5-E5-G5-C6 の軽快なアルペジオ
+  const notes = [523.25, 659.25, 783.99, 1046.50];
   notes.forEach((freq, i) => {
     playTone(freq * pitchShift, 0.13, 'triangle', now + i * 0.06);
   });
 }
- 
+
 // ==== ★ コンボ数に応じて背景色をリアルタイムに変化させる ====
-// コンボ0：落ち着いた青系 → コンボが重なるほど暖色・高彩度・高輝度へ
-const COMBO_COLOR_MAX = 15; // このコンボ数で最大の「熱狂状態」の色になる
+const COMBO_COLOR_MAX = 15;
 function updateBackgroundByCombo(comboCount) {
-  const t = Math.min(comboCount / COMBO_COLOR_MAX, 1); // 0(冷静) → 1(熱狂)
-  const hue = 205 - (205 * t);           // 205(落ち着いた青) → 0(情熱的な赤)
-  const saturation = 35 + 60 * t;        // 35% → 95%
-  const lightness = 22 + 10 * t;         // 22% → 32%（明るくなりすぎず可読性を維持）
+  const t = Math.min(comboCount / COMBO_COLOR_MAX, 1);
+  const hue = 205 - (205 * t);
+  const saturation = 35 + 60 * t;
+  const lightness = 22 + 10 * t;
   document.body.style.backgroundColor = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
 }
- 
+
 function updateDifficulty() {
   const mode = document.getElementById('keyboard-mode-select').value;
-  const includeChromatic = (currentStage === 2 || currentStage === 3); // ★ STAGE2・3は黒鍵を含む
- 
-  // 白鍵グループの可視範囲（鍵盤モードのみに依存）
+  const includeChromatic = (currentStage === 2 || currentStage === 3);
+
   const whiteKeyGroup = (mode === 'pc') ? diatonicSequencePC : diatonicSequenceMobile;
-  // 出題・進行に使う実際の音の並び（ステージにより白鍵のみ/黒鍵ありを切り替え）
   activeNoteSequence = includeChromatic
     ? ((mode === 'pc') ? chromaticSequencePC : chromaticSequenceMobile)
     : whiteKeyGroup;
- 
+
   if (currentNoteCount > activeNoteSequence.length) currentNoteCount = activeNoteSequence.length;
   currentAvailableNotes = activeNoteSequence.slice(0, currentNoteCount);
   
   document.getElementById('difficulty-badge').innerText = `開放音数: ${currentNoteCount} / ${activeNoteSequence.length}`;
   
-  // ★ ゲーム進行中でない場合（開始前・終了後のフリープレイ）は選択中モードの全音を使えるようにする
   const effectiveAvailableNotes = isPlayingGame ? currentAvailableNotes : activeNoteSequence;
- 
-  // ★ 鍵盤グループ（白鍵+黒鍵のペア）の表示は鍵盤モード（PC/スマホ）だけに依存する
+
   document.querySelectorAll('.key-group').forEach(group => {
     const whiteNote = group.dataset.whiteNote;
     group.classList.toggle('group-visible', whiteKeyGroup.includes(whiteNote));
   });
- 
+
   document.querySelectorAll('.key').forEach(el => {
     const noteId = el.id.replace('note-', '');
     const isBlack = el.classList.contains('black-key');
     const anchorWhiteNote = isBlack ? flatToWhiteAnchor[noteId] : noteId;
     const groupVisible = whiteKeyGroup.includes(anchorWhiteNote);
- 
-    // 黒鍵は「グループが可視」かつ「現在のステージが半音を含む」場合のみ表示
+
     const shouldShow = isBlack ? (groupVisible && includeChromatic) : groupVisible;
- 
+
     el.classList.toggle('visible-key', shouldShow);
     el.classList.toggle('active-key', shouldShow && effectiveAvailableNotes.includes(noteId));
   });
 }
- 
-// ★ 現在の状態（プレイ中 / フリープレイ）に応じて、実際に鳴らせる音の一覧を返す
+
 function getEffectiveAvailableNotes() {
   return isPlayingGame ? currentAvailableNotes : activeNoteSequence;
 }
- 
+
 function updateKeyboardUI() { updateDifficulty(); }
- 
+
 // ==== ★ スタート画面 / ステージ選択 / モーダル 制御 ====
 function renderStageLockState() {
   const stage2Unlocked = bestScore >= STAGE2_UNLOCK_SCORE;
   const stage3Unlocked = bestScore >= STAGE3_UNLOCK_SCORE;
- 
+
   document.getElementById('stage-2-card').classList.toggle('locked', !stage2Unlocked);
   document.getElementById('stage-2-lock-label').style.display = stage2Unlocked ? 'none' : 'inline-block';
- 
+
   document.getElementById('stage-3-card').classList.toggle('locked', !stage3Unlocked);
   document.getElementById('stage-3-lock-label').style.display = stage3Unlocked ? 'none' : 'inline-block';
- 
-  // ロック中のステージが選択済みだった場合はステージ1に戻す
+
   if ((currentStage === 2 && !stage2Unlocked) || (currentStage === 3 && !stage3Unlocked)) {
     selectStage(1);
   }
 }
- 
+
 function selectStage(stageNum) {
-  if (stageNum === 2 && bestScore < STAGE2_UNLOCK_SCORE) return; // ロック中は無視
-  if (stageNum === 3 && bestScore < STAGE3_UNLOCK_SCORE) return; // ロック中は無視
+  if (stageNum === 2 && bestScore < STAGE2_UNLOCK_SCORE) return;
+  if (stageNum === 3 && bestScore < STAGE3_UNLOCK_SCORE) return;
   currentStage = stageNum;
   document.getElementById('stage-1-card').classList.toggle('selected', stageNum === 1);
   document.getElementById('stage-2-card').classList.toggle('selected', stageNum === 2);
   document.getElementById('stage-3-card').classList.toggle('selected', stageNum === 3);
+  weakNotesDisplayCount = 3; // ★ ステージ切替時はランキング表示件数をリセット
+  updateAnalyticsUI(); // ★ ステージごとに異なるランキングをすぐ反映
 }
- 
+
 function showRulesModal() { document.getElementById('rules-modal-overlay').classList.add('visible'); }
 function closeRulesModal() { document.getElementById('rules-modal-overlay').classList.remove('visible'); }
- 
+
 function updateGameStatusLine() {
   const instrumentText = document.getElementById('instrument-select').selectedOptions[0].text;
   const modeText = document.getElementById('keyboard-mode-select').selectedOptions[0].text;
   document.getElementById('game-status-line').innerText = `🎷 ${instrumentText} ・ ${modeText} ・ STAGE ${currentStage}`;
- 
+
   const progressEl = document.getElementById('stage-progress-line');
   if (progressEl) {
     if (bestScore < STAGE2_UNLOCK_SCORE) {
@@ -474,43 +506,41 @@ function updateGameStatusLine() {
     }
   }
 }
- 
-// ★ スタート画面からの初回ゲーム開始（画面遷移してからstartSequenceを呼ぶ）
+
 function beginGame() {
   document.getElementById('start-screen').style.display = 'none';
   document.getElementById('game-screen').style.display = 'block';
-  stopBGM(true); // ★ ゲーム画面に入るのでBGMをフェードアウト
+  stopBGM(true);
+  lockBodyScroll(); // ★ ゲーム画面に入るのでスクロールをロック
   startSequence();
 }
- 
-// ★ ゲーム画面からステージ選択画面に戻る（設定を変更してから再スタートしたい場合用）
+
 function returnToStartScreen() {
   document.getElementById('game-screen').style.display = 'none';
   document.getElementById('start-screen').style.display = 'block';
-  document.getElementById('start-btn').style.display = ''; // ★ startSequence()でnoneにした表示を復元
+  document.getElementById('start-btn').style.display = '';
+  unlockBodyScroll(); // ★ 念のためここでもロック解除
   renderStageLockState();
-  playBGM(); // ★ ステージ選択画面に戻ったのでBGMを再開（ON設定時のみ）
+  playBGM();
 }
- 
+
 function startSequence() {
   if (isPlayingGame || isCountingDown) return;
   isCountingDown = true;
- 
-  // ★ 初回起動（AudioContextを新規作成・再開した直後）は音声パイプラインが安定するまで
-  //    わずかに遅延が生じ、カウントダウン音と1問目の音がズレて重なることがある。
-  //    そのため「まだ稼働していない状態からの起動」の時だけ、実際に再生可能になるのを待ってから開始する。
+  lockBodyScroll(); // ★ 「もう一度プレイ」経由の場合もここでロック
+
   const isColdStart = !audioCtx || audioCtx.state !== 'running';
   initAudio();
- 
+
   if (isColdStart) {
     audioCtx.resume().then(() => {
-      setTimeout(beginCountdownSequence, 150); // 立ち上がりを待つバッファ
+      setTimeout(beginCountdownSequence, 150);
     });
   } else {
-    beginCountdownSequence(); // 2回目以降はAudioContextが既に稼働中なので即座に開始
+    beginCountdownSequence();
   }
 }
- 
+
 function beginCountdownSequence() {
   updateBackgroundByCombo(0); 
   
@@ -521,12 +551,13 @@ function beginCountdownSequence() {
   document.getElementById('countdown').style.display = 'block';
   
   combo = 0; maxCombo = 0; streak = 0; score = 0; timeLeft = 30; currentNoteCount = 4; recentQuestionNotes = [];
+  weakNotesDisplayCount = 3;
   updateStats(); updateDifficulty(); updateGameStatusLine();
   document.getElementById('combo-message').innerHTML = '';
- 
+
   const now = audioCtx.currentTime;
   playCountdownSequence(now);
- 
+
   let count = 3; document.getElementById('countdown').innerText = count;
   const countInterval = setInterval(() => {
     count--;
@@ -539,37 +570,36 @@ function beginCountdownSequence() {
     }
   }, 1000); 
 }
- 
+
 function startGameLoop() {
   isPlayingGame = true;
-  updateDifficulty(); // ★ フリープレイ表示(全音)から、開放音数に応じた制限表示へ切り替える
+  gameStartTimestamp = Date.now(); // ★ フェイルセーフ用に開始時刻を記録
+  updateDifficulty();
   timerInterval = setInterval(() => {
     timeLeft--; updateStats();
-    if (timeLeft <= 0) endGame();
+    // ★ 残り時間切れ、または万一の異常で長時間続いた場合は強制終了する
+    if (timeLeft <= 0 || (Date.now() - gameStartTimestamp) > MAX_GAME_DURATION_MS) endGame();
   }, 1000);
-  // 笛の音が完全に終わってから十分に間隔を空ける（1.2秒）
   setTimeout(nextQuestion, 1200); 
 }
- 
-// ★ 出題の偏り防止用：直近に出題した音を保持（最大2件）
+
 let recentQuestionNotes = [];
- 
+
 function getNextNoteByWeight() {
+  const statsForStage = noteStatsByStage[currentStage];
   let totalWeight = 0; let weights = {};
   currentAvailableNotes.forEach(note => {
-    let stat = noteStats[note]; let weight = 1.0; 
+    let stat = statsForStage[note]; let weight = 1.0; 
     if (stat.attempts > 0) {
       weight += (1 - (stat.correct / stat.attempts)) * 2.0;
       weight += Math.min((stat.totalTime / stat.correct || 1000) / 800, 1.5);
     }
     weights[note] = weight; totalWeight += weight;
   });
- 
-  // ★ 同じ音が2回連続で出題されないようにする
+
   const isImmediateRepeat = (note) => 
     recentQuestionNotes.length >= 1 && recentQuestionNotes[recentQuestionNotes.length - 1] === note;
- 
-  // ★「ド→レ→ミ」のように隣接する音が3連続で同じ向きに並ぶ（単純な音階）のを防ぐ
+
   const formsSimpleScaleRun = (note) => {
     if (recentQuestionNotes.length < 2) return false;
     const idxPrev2 = activeNoteSequence.indexOf(recentQuestionNotes[recentQuestionNotes.length - 2]);
@@ -578,43 +608,40 @@ function getNextNoteByWeight() {
     if (idxPrev2 === -1 || idxPrev1 === -1 || idxNow === -1) return false;
     const step1 = idxPrev1 - idxPrev2;
     const step2 = idxNow - idxPrev1;
-    return Math.abs(step1) === 1 && step1 === step2; // 隣接キー同士が同じ向きに2ステップ続く
+    return Math.abs(step1) === 1 && step1 === step2;
   };
- 
-  // 両方の条件を満たす候補で絞り込む。開放音数が少なく候補が全滅する場合は段階的に制約を緩める。
+
   let candidates = currentAvailableNotes.filter(n => !isImmediateRepeat(n) && !formsSimpleScaleRun(n));
   if (candidates.length === 0) candidates = currentAvailableNotes.filter(n => !isImmediateRepeat(n));
   if (candidates.length === 0) candidates = currentAvailableNotes;
- 
+
   let candidateTotalWeight = 0;
   candidates.forEach(n => { candidateTotalWeight += weights[n]; });
- 
+
   let rand = Math.random() * candidateTotalWeight;
   let chosen = candidates[0];
   for (let note of candidates) { rand -= weights[note]; if (rand <= 0) { chosen = note; break; } }
- 
+
   recentQuestionNotes.push(chosen);
   if (recentQuestionNotes.length > 2) recentQuestionNotes.shift();
- 
+
   return chosen;
 }
- 
+
 function nextQuestion() {
   if (!isPlayingGame) return;
   isWaitingForAnswer = false;
- 
-  // ★ ステージ3のみ基準音をランダムに選ぶ（問題音自体は絶対音程のまま鳴らす。基準音はあくまで「惑わせ」の演出）
-  //    ステージ1・2は常に「ド」が基準音。
+
   const referenceNoteName = (currentStage === 3)
     ? stage3ReferencePool[Math.floor(Math.random() * stage3ReferencePool.length)]
     : 'C';
+  currentReferenceNote = referenceNoteName;
   const referenceFreq = getFrequency(referenceNoteName);
- 
+
   document.getElementById('game-message-area').innerHTML = (currentStage === 3)
     ? `🎵 基準音(${noteNames[referenceNoteName]}) ➡ 問題音...(基準音に惑わされず聴き分けよう)`
     : `🎵 基準音(${noteNames['C']}) ➡ 問題音...`;
- 
-  // ★ ステージ3：基準音が鳴るタイミング(0.4秒)に合わせて、対象の鍵盤を黄色くハイライトする
+
   if (currentStage === 3) {
     const referenceBtn = document.getElementById('note-' + referenceNoteName);
     if (referenceBtn) {
@@ -622,75 +649,84 @@ function nextQuestion() {
       setTimeout(() => referenceBtn.classList.remove('reference-highlight'), 400);
     }
   }
- 
+
   playSaxTone(referenceFreq, 0.4);
   setTimeout(() => {
     if (!isPlayingGame) return;
     currentQuestionNote = getNextNoteByWeight(); 
-    noteStats[currentQuestionNote].attempts++; 
-    // ★ ステージ3でも問題音は常にcurrentQuestionNoteの「絶対的な周波数」で鳴らす。
-    //    基準音はランダムだが、正解の鍵盤＝実際に鳴った音（名前ベース）と完全に一致する仕様。
+    noteStatsByStage[currentStage][currentQuestionNote].attempts++; 
+
+    // ★ ステージ3のみ：基準音からの半音差（0〜11）を「音程」として集計する
+    if (currentStage === 3) {
+      const diff = semitoneOffsets[currentQuestionNote] - semitoneOffsets[currentReferenceNote];
+      currentIntervalClass = ((diff % 12) + 12) % 12;
+      intervalStats[currentIntervalClass].attempts++;
+    }
+
     const questionFreq = getFrequency(currentQuestionNote);
     playSaxTone(questionFreq, 0.6);
     questionStartTime = performance.now(); isWaitingForAnswer = true;
   }, 600);
 }
- 
+
 function checkAnswer(answerNote) {
-  // ★ ゲーム未進行時（開始前 or 終了後）はフリープレイ：選択中モードの全音を使え、スコア・タイマーに影響しない
   if (!isPlayingGame) {
-    if (isCountingDown) return; // カウントダウン中は無視
+    if (isCountingDown) return;
     if (!activeNoteSequence.includes(answerNote)) return;
     playFreePlayTone(answerNote);
     return;
   }
- 
+
   if (!currentAvailableNotes.includes(answerNote)) return;
   if (!isWaitingForAnswer) return;
- 
+
   const responseTime = Math.round(performance.now() - questionStartTime); 
   isWaitingForAnswer = false; 
- 
+  const statsForStage = noteStatsByStage[currentStage];
+
   if (getPitchClass(answerNote) === getPitchClass(currentQuestionNote)) {
     streak++; 
-    noteStats[currentQuestionNote].correct++;
-    noteStats[currentQuestionNote].totalTime += responseTime;
+    statsForStage[currentQuestionNote].correct++;
+    statsForStage[currentQuestionNote].totalTime += responseTime;
+
+    if (currentStage === 3) {
+      intervalStats[currentIntervalClass].correct++;
+      intervalStats[currentIntervalClass].totalTime += responseTime;
+    }
     
-    // ★ 正解時のレベルアップ処理（3問連続で+2音）
     if (streak > 0 && streak % 3 === 0) {
       currentNoteCount = Math.min(activeNoteSequence.length, currentNoteCount + 2);
     }
     saveStats(); updateAnalyticsUI(); updateDifficulty();
- 
+
     playCorrectSE();
     document.body.classList.add('flash-green'); 
     setTimeout(() => document.body.classList.remove('flash-green'), 100);
- 
+
     let basePoints = Math.max(10, Math.floor(1000 - responseTime / 3)); 
     let difficultyMultiplier = 1.0 + ((currentNoteCount - 4) * 0.25); 
-    basePoints = Math.floor(basePoints * difficultyMultiplier);
- 
-    let msgHTML = `⭕ 正解！ (+${basePoints}点)<br><small>反応: ${responseTime} ms (難易度ボーナス x${difficultyMultiplier.toFixed(2)})</small>`;
+    let stageMultiplier = STAGE_SCORE_MULTIPLIERS[currentStage] || 1.0;
+    basePoints = Math.floor(basePoints * difficultyMultiplier * stageMultiplier);
+
+    let msgHTML = `⭕ 正解！ (+${basePoints}点)<br><small>反応: ${responseTime} ms (難易度x${difficultyMultiplier.toFixed(2)} ・ STAGE補正x${stageMultiplier.toFixed(1)})</small>`;
     
-    // ★ 端末別のコンボ判定猶予（iOS: 1300ms / Android: 1200ms / PC: 1000ms）
     if (responseTime <= COMBO_TIME_THRESHOLD) {
       combo++;
-      if (combo > maxCombo) maxCombo = combo; // ★ここを追加
+      if (combo > maxCombo) maxCombo = combo;
       let speedMultiplier = Math.min(1.0 + (combo * 0.2), 3.0);
       let finalPoints = Math.floor(basePoints * speedMultiplier);
       msgHTML = `<span style="color:#f1c40f">⚡ FAST!! (+${finalPoints}点 / 速度x${speedMultiplier.toFixed(1)})</span>`;
       score += finalPoints;
- 
-      // ★ 9コンボ以降は3コンボごとに+4秒（それ未満は既存の6コンボごと+3秒・3コンボごと+2秒を維持）
+
+      // ★ 時間ボーナスはMAX_TIME_LEFTを超えて積み上がらないようにする（無限ゲーム化の防止）
       if (combo >= 9 && combo % 3 === 0) {
-        timeLeft += 4; document.getElementById('combo-message').innerText = "⏰ +4秒!!";
+        timeLeft = Math.min(timeLeft + 4, MAX_TIME_LEFT); document.getElementById('combo-message').innerText = "⏰ +4秒!!";
       } else if (combo > 0 && combo % 6 === 0) {
-        timeLeft += 3; document.getElementById('combo-message').innerText = "⏰ +3秒!";
+        timeLeft = Math.min(timeLeft + 3, MAX_TIME_LEFT); document.getElementById('combo-message').innerText = "⏰ +3秒!";
       } else if (combo > 0 && combo % 3 === 0) {
-        timeLeft += 2; document.getElementById('combo-message').innerText = "⏰ +2秒!";
+        timeLeft = Math.min(timeLeft + 2, MAX_TIME_LEFT); document.getElementById('combo-message').innerText = "⏰ +2秒!";
       }
- 
-      // ★ レベルアップ効果音：コンボが3の倍数に到達した瞬間、通常の正解音とは別に鳴らす
+
       if (combo % 3 === 0) {
         playLevelUpSFX(combo);
       }
@@ -703,10 +739,9 @@ function checkAnswer(answerNote) {
     const correctBtn = document.getElementById('note-'+answerNote);
     if(correctBtn) { correctBtn.classList.add('correct-highlight'); setTimeout(() => correctBtn.classList.remove('correct-highlight'), 300); }
     setTimeout(nextQuestion, 500);
- 
+
   } else {
     streak = 0; combo = 0;
-    // ★ ミス時のレベルダウン処理（-1音）
     currentNoteCount = Math.max(4, currentNoteCount - 1);
     saveStats(); updateAnalyticsUI(); updateDifficulty(); 
     
@@ -715,105 +750,151 @@ function checkAnswer(answerNote) {
     setTimeout(() => document.body.classList.remove('flash-red'), 100);
     updateStats();
     
-    // ★ 正解だった鍵盤を光らせる（直感的な学習サポート）
     const actualCorrectBtn = document.getElementById('note-'+currentQuestionNote);
     if(actualCorrectBtn) {
       actualCorrectBtn.classList.add('correct-highlight');
       setTimeout(() => actualCorrectBtn.classList.remove('correct-highlight'), 800);
     }
- 
+
     document.getElementById('combo-message').innerText = "";
     document.getElementById('game-message-area').innerHTML = `❌ 惜しい！<br><small>正解は <strong>${document.getElementById('note-'+currentQuestionNote).innerText.replace(/\(.\)/g,'')}</strong> でした。開放音が1つ減ります。</small>`;
     setTimeout(nextQuestion, 1000);
   }
 }
- 
-// ★ フリープレイ用：スコア・タイマーに一切影響せず単音を鳴らすだけの関数
+
 function playFreePlayTone(noteName) {
   initAudio();
   playSaxTone(getFrequency(noteName), 0.6);
   const btn = document.getElementById('note-'+noteName);
   if (btn) { btn.classList.add('correct-highlight'); setTimeout(() => btn.classList.remove('correct-highlight'), 300); }
 }
- 
+
 function updateStats() {
   document.getElementById('score').innerText = score;
   document.getElementById('time').innerText = timeLeft;
   document.getElementById('combo-count-large').innerText = combo;
   document.getElementById('streak').innerText = streak;
-  
-  // ★ 背景色はスコアではなく「現在のコンボ数」に応じてリアルタイムに変化させる
   updateBackgroundByCombo(combo);
 }
- 
-function saveStats() { localStorage.setItem('saxEarTrainStats', JSON.stringify(noteStats)); }
- 
+
+function saveStats() {
+  localStorage.setItem('saxEarTrainStatsByStage', JSON.stringify(noteStatsByStage));
+  localStorage.setItem('saxEarTrainIntervalStats', JSON.stringify(intervalStats));
+}
+
+// ==== ★ 苦手な音／音程ランキング（ステージごとに切り替え、「もっと見る」で追加表示）====
 function updateAnalyticsUI() {
+  const titleEl = document.getElementById('weak-notes-title');
+  const listEl = document.getElementById('weak-notes-list');
+  const moreBtn = document.getElementById('weak-notes-more-btn');
+  if (!listEl) return;
+
+  if (currentStage === 3) {
+    // ★ ステージ3は「苦手な音程（跳躍）」のランキングを表示する
+    if (titleEl) titleEl.innerText = '🚨 苦手な音程（跳躍）';
+
+    let displayData = [];
+    for (let i = 0; i <= 11; i++) {
+      const stat = intervalStats[i];
+      if (stat && stat.attempts > 2) {
+        let accuracy = Math.round((stat.correct / stat.attempts) * 100);
+        let avgTime = stat.correct > 0 ? Math.round(stat.totalTime / stat.correct) : 0;
+        let weakScore = (100 - accuracy) * 10 + avgTime;
+        displayData.push({ label: intervalNames[i], accuracy, avgTime, weakScore });
+      }
+    }
+    if (displayData.length === 0) {
+      listEl.innerHTML = `<div style="font-size:0.8em; color:#bdc3c7;">データが貯まると表示されます</div>`;
+      if (moreBtn) moreBtn.style.display = 'none';
+      return;
+    }
+    displayData.sort((a, b) => b.weakScore - a.weakScore);
+    const shown = displayData.slice(0, weakNotesDisplayCount);
+    let html = '';
+    shown.forEach((d, i) => {
+      html += `<div class="weak-note-item"><span>${i+1}. <strong>${d.label}</strong></span><span>正答率: ${d.accuracy}% / 平均: ${d.avgTime}ms</span></div>`;
+    });
+    listEl.innerHTML = html;
+    if (moreBtn) moreBtn.style.display = (displayData.length > weakNotesDisplayCount) ? 'block' : 'none';
+    return;
+  }
+
+  // ★ ステージ1・2は通常の「苦手な音」ランキング（ステージごとに別集計）
+  if (titleEl) titleEl.innerText = `🚨 STAGE${currentStage} 苦手な音`;
+  const statsForStage = noteStatsByStage[currentStage];
   let displayData = [];
   allNoteKeys.forEach(note => {
-    let stat = noteStats[note];
-    if (stat.attempts > 2) { 
+    let stat = statsForStage[note];
+    if (stat && stat.attempts > 2) { 
       let accuracy = Math.round((stat.correct / stat.attempts) * 100);
       let avgTime = stat.correct > 0 ? Math.round(stat.totalTime / stat.correct) : 0;
       let weakScore = (100 - accuracy) * 10 + avgTime;
       displayData.push({ note: note, accuracy: accuracy, avgTime: avgTime, weakScore: weakScore });
     }
   });
-  if (displayData.length === 0) return;
+  if (displayData.length === 0) {
+    listEl.innerHTML = `<div style="font-size:0.8em; color:#bdc3c7;">データが貯まると表示されます</div>`;
+    if (moreBtn) moreBtn.style.display = 'none';
+    return;
+  }
   displayData.sort((a, b) => b.weakScore - a.weakScore);
-  const top3 = displayData.slice(0, 3);
+  const shown = displayData.slice(0, weakNotesDisplayCount);
   let html = ''; 
-  top3.forEach((d, i) => {
+  shown.forEach((d, i) => {
     html += `<div class="weak-note-item"><span>${i+1}. <strong>${noteNames[d.note]}</strong></span><span>正答率: ${d.accuracy}% / 平均: ${d.avgTime}ms</span></div>`;
   });
-  document.getElementById('weak-notes-list').innerHTML = html;
+  listEl.innerHTML = html;
+  if (moreBtn) moreBtn.style.display = (displayData.length > weakNotesDisplayCount) ? 'block' : 'none';
 }
- 
+
+function showMoreWeakNotes() {
+  weakNotesDisplayCount += 3;
+  updateAnalyticsUI();
+}
+
 function updateHistoryUI() {
   const listEl = document.getElementById('history-list');
   if (scoreHistory.length === 0) { listEl.innerHTML = "<div style='color:#bdc3c7; text-align:center;'>まだ履歴がありません</div>"; return; }
   let html = '';
   scoreHistory.slice().reverse().slice(0, 10).forEach((data) => {
-    html += `<div class="history-item"><div style="font-size:1.1em; font-weight:bold;">${data.score} 点</div><div style="color:#bdc3c7;">最高連続: ${data.streak}回 <br><small>${data.date}</small></div></div>`;
+    html += `<div class="history-item"><div style="font-size:1.1em; font-weight:bold;">${data.score} 点</div><div style="color:#bdc3c7;">最大コンボ: ${data.streak} <br><small>${data.date}</small></div></div>`;
   });
   listEl.innerHTML = html;
 }
- 
+
 function endGame() {
   clearInterval(timerInterval);
   isPlayingGame = false; 
   isWaitingForAnswer = false;
+  unlockBodyScroll(); // ★ ゲーム終了時にスクロールロックを解除
   
-  // UIのロックを解除
   document.getElementById('instrument-select').disabled = false; 
   document.getElementById('keyboard-mode-select').disabled = false;
   document.getElementById('time').innerText = "0";
   
-  const finalCombo = maxCombo; // 最大コンボ数
+  const finalCombo = maxCombo;
   combo = 0; document.getElementById('combo-count-large').innerText = combo;
   updateBackgroundByCombo(0);
-  updateDifficulty(); // フリープレイ用全音アクティブ化
+  updateDifficulty(); // ★ フリープレイ用に全音アクティブ化（鍵盤はそのまま使える）
   
-  // ローカル履歴の保存
   const dateStr = new Date().toLocaleString();
   scoreHistory.push({ score: score, streak: finalCombo, date: dateStr });
   localStorage.setItem('saxEarTrainHistory', JSON.stringify(scoreHistory));
   updateHistoryUI(); 
   
-  // ★ ベストスコア更新とステージ解放判定（完全復元）
   const wasStage2Unlocked = bestScore >= STAGE2_UNLOCK_SCORE;
   const wasStage3Unlocked = bestScore >= STAGE3_UNLOCK_SCORE;
-  if (score > bestScore) {
+  const isNewBest = score > bestScore;
+  if (isNewBest) {
     bestScore = score;
     localStorage.setItem('saxEarTrainBestScore', String(bestScore));
   }
-  if(typeof renderStageLockState === 'function') renderStageLockState();
-  if(typeof updateGameStatusLine === 'function') updateGameStatusLine();
+  renderStageLockState();
+  updateGameStatusLine();
   
   const stage2JustUnlocked = !wasStage2Unlocked && bestScore >= STAGE2_UNLOCK_SCORE;
   const stage3JustUnlocked = !wasStage3Unlocked && bestScore >= STAGE3_UNLOCK_SCORE;
   
-  // ★ ランク判定（完全復元）
   let rankName = ""; let rankColor = ""; let rankDesc = "";
   if (score < 10000) { rankName = "🥉 ビギナー"; rankColor = "#cd7f32"; rankDesc = "近い音程の距離感が掴めてきたレベル"; }
   else if (score < 25000) { rankName = "🥈 レギュラー"; rankColor = "#bdc3c7"; rankDesc = "1オクターブ内の跳躍に迷いがなくなってきたレベル"; }
@@ -823,143 +904,130 @@ function endGame() {
   else if (score < 150000) { rankName = "🏆 グランドマスター"; rankColor = "#8e44ad"; rankDesc = "ステージ3の惑わせにも動じない、名手と呼ぶにふさわしい領域"; }
   else { rankName = "✨ 神の耳"; rankColor = "#ff4500"; rankDesc = "システムと完全に同化。限界スピードでの連続正解を維持できる究極の耳！"; }
   
-  // ランクと解放情報を元のメッセージエリアに表示（モーダルが開いても背景として見えるように）
-  let endMsg = `<div class="rank-display" style="color:${rankColor};">${rankName}<br><span style="font-size:0.55em; font-weight:normal; color:#ecf0f1;">${rankDesc}</span></div>`;
+  let endMsg = `🏁 タイムアップ！<br>最終スコア: ${score}点 (最大コンボ: ${finalCombo})<br>`;
+  endMsg += `<div class="rank-display" style="color:${rankColor};">${rankName}<br><span style="font-size:0.55em; font-weight:normal; color:#ecf0f1;">${rankDesc}</span></div>`;
   if (stage2JustUnlocked) { endMsg += `<div style="color:#2ecc71; font-weight:bold; margin-bottom:10px;">🔓 ステージ2がアンロックされました！</div>`; }
   if (stage3JustUnlocked) { endMsg += `<div style="color:#2ecc71; font-weight:bold; margin-bottom:10px;">🔓 ステージ3がアンロックされました！</div>`; }
-  document.getElementById('game-message-area').innerHTML = endMsg;
-  
-  // モーダルにスコアデータをセット
-  document.getElementById('modal-final-score').innerText = score;
-  document.getElementById('modal-final-combo').innerText = finalCombo;
-  
-  // 前回の名前をセット（変数を元の 'saxEarTrainPlayerName' に修正）
-  const savedName = localStorage.getItem('saxEarTrainPlayerName') || '';
-  document.getElementById('player-name-input').value = savedName;
-  document.getElementById('submit-status-msg').innerText = ''; 
-  
-  // モーダルを表示
-  document.getElementById('game-over-modal-overlay').style.display = 'flex';
-}
 
-// ==== ★ モーダル用のボタンアクション関数を追加 ====
-function playAgainFromModal() {
-  document.getElementById('game-over-modal-overlay').style.display = 'none';
-  startSequence(); // 「もう一度プレイ」の正しい処理
-}
-
-function returnToTitleFromModal() {
-  document.getElementById('game-over-modal-overlay').style.display = 'none';
-  returnToStartScreen(); // 「ステージ選択に戻る」の正しい処理
-}
-
-// ==== ★ 新規追加：モーダル操作とスコア送信関数 ====
-function closeGameOverModal() {
-  document.getElementById('game-over-modal-overlay').style.display = 'none';
-  resetToTitle(); // 閉じたらタイトルへ戻る
-}
-
-function submitScore() {
-  // 画面のスコアと、保存されている自己ベストを取得
-  const currentScore = parseInt(document.getElementById('modal-final-score').innerText);
-  const currentBest = parseInt(localStorage.getItem('saxEarTrainBestScore')) || 0;
-  const statusEl = document.getElementById('submit-status-msg');
-
-  // ★ 追加：自己ベスト（最高得点）を下回る場合は送信をブロックする
-  if (currentScore <= currentBest && currentScore > 0) {
-    statusEl.innerText = '⚠️ ランキング送信は自己ベスト更新時のみ可能です！';
-    return; // ここで処理を強制終了
+  // ★★★ ランキング送信UIはフルスクリーンモーダルではなく、メッセージエリア内に直接埋め込む。
+  //     こうすることで、下の鍵盤（フリープレイ用ピアノ）が隠れず、常に操作できる。 ★★★
+  if (isNewBest) {
+    endMsg += `<div style="color:#f1c40f; font-weight:bold; margin-top:6px;">🎉 自己ベスト更新！ランキングに記録しよう</div>`;
+    endMsg += `
+      <div class="score-submit-box">
+        <input type="text" id="player-name-input" class="score-name-input" placeholder="お名前を入力 (10文字以内)" maxlength="10">
+        <button id="submit-score-btn" class="action-btn" onclick="submitScore(${score}, ${finalCombo})" style="width:100%; margin-top:8px;">📤 ランキングにスコアを送信</button>
+        <div id="submit-status-msg" class="score-submit-status"></div>
+      </div>`;
   }
 
-  const playerName = document.getElementById('player-name-input').value.trim();
-  
+  endMsg += `<div style="font-size:0.85em; color:#1abc9c; margin: 10px 0;">🎹 下の鍵盤はそのまま鳴らせます。間違えた音の確認やピッチチェックにどうぞ。</div>`;
+  endMsg += `<button class="action-btn" onclick="startSequence()" style="margin-top:10px;">もう一度プレイ <small>(Enter)</small></button><br>`;
+  endMsg += `<button class="link-btn" onclick="returnToStartScreen();" style="margin-top:6px;">🔁 ステージ選択・設定に戻る</button>`;
+
+  document.getElementById('game-message-area').innerHTML = endMsg;
+
+  if (isNewBest) {
+    const nameInput = document.getElementById('player-name-input');
+    if (nameInput) nameInput.value = localStorage.getItem('saxEarTrainPlayerName') || '';
+  }
+}
+
+// ==== ★ スコアの外部送信（GASスプレッドシートへ記録＋Discordへの閾値通知）====
+function submitScore(finalScore, finalCombo) {
+  const statusEl = document.getElementById('submit-status-msg');
+  const nameInput = document.getElementById('player-name-input');
+  const submitBtn = document.getElementById('submit-score-btn');
+  const playerName = nameInput ? nameInput.value.trim() : '';
+
   if (!playerName) {
-    statusEl.innerText = '⚠️ 名前を入力してください';
+    if (statusEl) statusEl.innerText = '⚠️ 名前を入力してください';
     return;
   }
-  
-  // 名前を保存（次回から入力不要に）
-  localStorage.setItem('saxEarTrainerName', playerName);
-  
-  const finalCombo = parseInt(document.getElementById('modal-final-combo').innerText);
-  
-  statusEl.innerText = '送信中... (Sending...)';
-  
+
+  // ★ 次回以降のためにプレイヤー名を保存（キー名の誤字を修正: saxEarTrainerName → saxEarTrainPlayerName）
+  localStorage.setItem('saxEarTrainPlayerName', playerName);
+
+  if (submitBtn) submitBtn.disabled = true;
+  if (statusEl) statusEl.innerText = '送信中... (Sending...)';
+
+  // ==== 1. GAS（スプレッドシート）へ送信 ====
   fetch(GAS_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'text/plain' },
-    body: JSON.stringify({ name: playerName, score: currentScore, combo: finalCombo })
+    headers: { 'Content-Type': 'text/plain' }, // ★ GAS側のCORSプリフライト回避のためtext/plainを維持
+    body: JSON.stringify({ name: playerName, score: finalScore, combo: finalCombo })
   })
   .then(() => {
-    statusEl.innerText = '✅ 送信完了！ランキングを更新します...';
-    if(typeof loadLeaderboard === 'function') loadLeaderboard(); // ランキングを最新に
-    
-    setTimeout(() => {
-      // ★ 修正：送信完了後は、単に閉じるのではなくタイトル画面へ戻す
-      if(typeof returnToTitleFromModal === 'function') {
-        returnToTitleFromModal();
-      } else {
-        document.getElementById('game-over-modal-overlay').style.display = 'none';
-        returnToStartScreen();
-      }
-    }, 1500);
+    if (statusEl) statusEl.innerText = '✅ 送信完了！ランキングを更新しました';
+    if (typeof loadLeaderboard === 'function') loadLeaderboard();
   })
   .catch(err => {
     console.error(err);
-    statusEl.innerText = '⚠️ 送信に失敗しました。時間をおいて再試行してください。';
+    if (statusEl) statusEl.innerText = '⚠️ 送信に失敗しました。時間をおいて再試行してください。';
+  })
+  .finally(() => {
+    if (submitBtn) submitBtn.disabled = false;
   });
+
+  // ==== 2. スコアが閾値を超えていればDiscordへ通知 ====
+  if (finalScore >= SCORE_ALERT_THRESHOLD) {
+    fetch(DISCORD_WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        content: "🔥 伝説誕生！ **" + playerName + "** が驚異の **" + finalScore + "点** を叩き出しました！ (最大コンボ: " + finalCombo + ")"
+      })
+    }).catch(err => {
+      console.error('Discordへの通知に失敗しました:', err);
+    });
+  }
 }
 
- 
 // ==== ★ PC用キー割り当て（カスタマイズ可能）====
-// デフォルトの白鍵キー割り当て。ユーザーはこれを自由に変更でき、localStorageに保存される。
-// ※HighEは黒鍵専用キー「W」との衝突を避けるため、デフォルトを「I」に変更しています。
 const defaultKeyBindings = {
   'LowA': 'z', 'LowB': 'x',
   'C': 'a', 'D': 's', 'E': 'd', 'F': 'f', 'G': 'j', 'A': 'k', 'B': 'l', 'HighC': ';',
   'HighD': 'q', 'HighE': 'i'
 };
- 
-// ★ 黒鍵（半音）専用キーのデフォルト割り当て（DAWのピアノロール風にW,E,T,Y,Uを基本とする）
+
 const defaultBlackKeyBindings = {
   'LowBb': 'r',
   'Db': 'w', 'Eb': 'e', 'Gb': 't', 'Ab': 'y', 'Bb': 'u',
   'HighDb': 'o', 'HighEb': 'p'
 };
- 
+
 function loadKeyBindings() {
   try {
     const saved = JSON.parse(localStorage.getItem('saxEarTrainKeyBindings'));
     if (saved && typeof saved === 'object') {
-      return Object.assign({}, defaultKeyBindings, saved); // 未保存の音はデフォルトで補完
+      return Object.assign({}, defaultKeyBindings, saved);
     }
-  } catch (e) { /* 壊れたデータは無視してデフォルトにフォールバック */ }
+  } catch (e) {}
   return Object.assign({}, defaultKeyBindings);
 }
- 
+
 function loadBlackKeyBindings() {
   try {
     const saved = JSON.parse(localStorage.getItem('saxEarTrainBlackKeyBindings'));
     if (saved && typeof saved === 'object') {
       return Object.assign({}, defaultBlackKeyBindings, saved);
     }
-  } catch (e) { /* 壊れたデータは無視してデフォルトにフォールバック */ }
+  } catch (e) {}
   return Object.assign({}, defaultBlackKeyBindings);
 }
- 
+
 let keyBindings = loadKeyBindings();
 let blackKeyBindings = loadBlackKeyBindings();
-let keyMap = {};      // 物理キー → 白鍵の音名
-let domKeyMap = {};   // 物理キー → 鍵盤のDOM ID
-let blackKeyMap = {}; // 物理キー → 黒鍵の音名（専用キーモード用）
- 
+let keyMap = {};
+let domKeyMap = {};
+let blackKeyMap = {};
+
 function handleSemitoneModeChange() {
   semitoneInputMode = document.getElementById('semitone-mode-select').value;
   localStorage.setItem('saxEarTrainSemitoneInputMode', semitoneInputMode);
   updateKeyHintLabels();
 }
- 
-// ★ keyBindings/blackKeyBindingsからkeyMap/domKeyMap/blackKeyMapを再構築する（カスタマイズ保存時・初期化時に呼ぶ）
+
 function rebuildKeyMaps() {
   keyMap = {}; domKeyMap = {};
   Object.keys(keyBindings).forEach(note => {
@@ -968,7 +1036,7 @@ function rebuildKeyMaps() {
     keyMap[key] = note;
     domKeyMap[key] = 'note-' + note;
   });
- 
+
   blackKeyMap = {};
   Object.keys(blackKeyBindings).forEach(note => {
     const key = (blackKeyBindings[note] || '').toLowerCase();
@@ -977,9 +1045,7 @@ function rebuildKeyMaps() {
   });
 }
 rebuildKeyMaps();
- 
-// ★ 鍵盤ボタン上のキー表示ラベル（例:「(A)」）を、現在のキー割り当てに合わせて更新する
-//   黒鍵側は入力モードに応じて「(W)」（専用キー）または「(Spc+A)」（修飾キー）を表示する
+
 function updateKeyHintLabels() {
   keybindableNotes.forEach(note => {
     const el = document.getElementById('keyhint-' + note);
@@ -997,14 +1063,13 @@ function updateKeyHintLabels() {
   });
 }
 updateKeyHintLabels();
- 
-// ==== ★ キー割り当てカスタマイズ用モーダル ====
+
 function showKeybindModal() {
   renderKeybindModalContent();
   document.getElementById('keybind-modal-overlay').classList.add('visible');
 }
 function closeKeybindModal() { document.getElementById('keybind-modal-overlay').classList.remove('visible'); }
- 
+
 function renderKeybindModalContent() {
   let html = '<div class="keybind-section-label">🎼 白鍵</div>';
   keybindableNotes.forEach(note => {
@@ -1016,7 +1081,7 @@ function renderKeybindModalContent() {
                onkeydown="handleKeybindCapture(event, this)" onfocus="this.select();">
       </div>`;
   });
- 
+
   if (semitoneInputMode === 'dedicated') {
     html += '<div class="keybind-section-label">🎹 黒鍵（半音・専用キー）</div>';
     Object.keys(sharpKeyMap).forEach(whiteNote => {
@@ -1032,27 +1097,26 @@ function renderKeybindModalContent() {
   } else {
     html += '<p style="font-size:0.8em; color:#95a5a6; margin: 10px 0 0 0;">現在「修飾キー(Space)」モードのため、黒鍵は <strong>Space + 白鍵</strong> で入力します（個別設定なし）。</p>';
   }
- 
+
   document.getElementById('keybind-list').innerHTML = html;
   document.getElementById('keybind-status-msg').innerText = '';
 }
- 
-// ★ 入力欄にフォーカスした状態で押したキーをそのまま割り当てとして捕捉する
+
 function handleKeybindCapture(e, inputEl) {
   e.preventDefault();
   let key = e.key;
-  if (key.length !== 1) return; // Tab/Shift/矢印キーなどの制御キーは無視
+  if (key.length !== 1) return;
   if (key === ' ') { 
     document.getElementById('keybind-status-msg').innerText = '⚠️ スペースキーは予約されているため使用できません';
     return; 
   }
   inputEl.value = key.toUpperCase();
 }
- 
+
 function saveKeybindSettings() {
   const inputs = document.querySelectorAll('.keybind-input');
   const newWhiteBindings = {}; const newBlackBindings = {}; const usedKeys = new Set(); let hasDuplicate = false;
- 
+
   inputs.forEach(input => {
     const note = input.dataset.note;
     const isBlack = input.dataset.black === '1';
@@ -1062,23 +1126,22 @@ function saveKeybindSettings() {
     usedKeys.add(key);
     if (isBlack) { newBlackBindings[note] = key; } else { newWhiteBindings[note] = key; }
   });
- 
+
   if (hasDuplicate) {
     document.getElementById('keybind-status-msg').innerText = '⚠️ 同じキーが複数の音に割り当てられています。重複を解消してください。';
     return;
   }
- 
+
   keyBindings = newWhiteBindings;
-  // 黒鍵側はモーダルに表示されていた分だけ更新し、非表示だった分（別モードの設定）は保持する
   blackKeyBindings = Object.assign({}, blackKeyBindings, newBlackBindings);
- 
+
   localStorage.setItem('saxEarTrainKeyBindings', JSON.stringify(keyBindings));
   localStorage.setItem('saxEarTrainBlackKeyBindings', JSON.stringify(blackKeyBindings));
   rebuildKeyMaps();
   updateKeyHintLabels();
   document.getElementById('keybind-status-msg').innerText = '✅ 保存しました！';
 }
- 
+
 function resetKeybindSettings() {
   keyBindings = Object.assign({}, defaultKeyBindings);
   blackKeyBindings = Object.assign({}, defaultBlackKeyBindings);
@@ -1089,49 +1152,44 @@ function resetKeybindSettings() {
   renderKeybindModalContent();
   document.getElementById('keybind-status-msg').innerText = '↺ デフォルトのキー割り当てに戻しました。';
 }
- 
-// ★ スペースキーを押しっぱなしにしているかどうか（半音の修飾キーとして使う。プレイ中/フリープレイ問わず常に有効）
+
 let isSpaceHeld = false;
- 
+
 window.addEventListener('keydown', (e) => {
   const key = e.key.toLowerCase();
- 
-  // ==== スペースキー：常に「半音化の修飾キー」専用（スタート/リプレイの発火はしない）====
+
   if (e.code === 'Space' || e.key === ' ') {
     const activeTag = document.activeElement ? document.activeElement.tagName : '';
-    if (activeTag === 'SELECT' || activeTag === 'INPUT' || activeTag === 'TEXTAREA') return; // ネイティブ操作を優先
-    if (document.getElementById('rules-modal-overlay').classList.contains('visible')) return; // モーダル表示中は無視
-    if (document.getElementById('keybind-modal-overlay').classList.contains('visible')) return; // キー設定モーダル表示中も無視
-    if (document.getElementById('tutorial-overlay').classList.contains('visible')) return; // チュートリアル表示中も無視
- 
+    if (activeTag === 'SELECT' || activeTag === 'INPUT' || activeTag === 'TEXTAREA') return;
+    if (document.getElementById('rules-modal-overlay').classList.contains('visible')) return;
+    if (document.getElementById('keybind-modal-overlay').classList.contains('visible')) return;
+    if (document.getElementById('tutorial-overlay').classList.contains('visible')) return;
+
     e.preventDefault();
     isSpaceHeld = true;
     return;
   }
- 
-  // ==== Enterキー：「ゲームスタート」「もう一度プレイ」専用（プレイ中/フリープレイどちらでもSpaceと競合しない）====
+
   if (e.code === 'Enter') {
     const activeTag = document.activeElement ? document.activeElement.tagName : '';
-    if (activeTag === 'SELECT' || activeTag === 'INPUT' || activeTag === 'TEXTAREA') return; // ネイティブ操作を優先
-    if (document.getElementById('rules-modal-overlay').classList.contains('visible')) return; // モーダル表示中は無視
-    if (document.getElementById('keybind-modal-overlay').classList.contains('visible')) return; // キー設定モーダル表示中も無視
-    if (document.getElementById('tutorial-overlay').classList.contains('visible')) return; // チュートリアル表示中も無視
- 
+    if (activeTag === 'SELECT' || activeTag === 'INPUT' || activeTag === 'TEXTAREA') return;
+    if (document.getElementById('rules-modal-overlay').classList.contains('visible')) return;
+    if (document.getElementById('keybind-modal-overlay').classList.contains('visible')) return;
+    if (document.getElementById('tutorial-overlay').classList.contains('visible')) return;
+
     e.preventDefault();
- 
+
     const startScreenVisible = document.getElementById('start-screen').style.display !== 'none';
     if (startScreenVisible) {
       if (!isPlayingGame && !isCountingDown) beginGame();
     } else if (!isPlayingGame && !isCountingDown) {
-      startSequence(); // ゲーム画面で終了後の「もう一度プレイ」に相当
+      startSequence();
     }
     return;
   }
- 
-  // ==== 音符キー（白鍵）：修飾キーモードならSpace同時押しで黒鍵に切り替え ====
+
   if (keyMap[key]) {
     let targetNote = keyMap[key];
-    // ★「修飾キー(Space)」モード選択時のみ、Spaceを押しながらで黒鍵（シャープ）に変換する
     if (semitoneInputMode === 'modifier' && isSpaceHeld && sharpKeyMap[targetNote]) {
       targetNote = sharpKeyMap[targetNote];
     }
@@ -1141,8 +1199,7 @@ window.addEventListener('keydown', (e) => {
     }
     return;
   }
- 
-  // ==== 黒鍵の専用キー（「専用キー」モード選択時のみ有効）====
+
   if (semitoneInputMode === 'dedicated' && blackKeyMap[key]) {
     const targetNote = blackKeyMap[key];
     const btn = document.getElementById('note-' + targetNote);
@@ -1154,13 +1211,12 @@ window.addEventListener('keydown', (e) => {
 });
 window.addEventListener('keyup', (e) => {
   if (e.code === 'Space' || e.key === ' ') { isSpaceHeld = false; }
- 
+
   const key = e.key.toLowerCase();
   if (keyMap[key]) {
     const baseNote = keyMap[key];
     const baseBtn = document.getElementById('note-' + baseNote);
     if (baseBtn) baseBtn.classList.remove('pressed');
-    // Space解放のタイミング次第で黒鍵側にpressedが残る場合があるため、念のため両方解除する
     if (sharpKeyMap[baseNote]) {
       const sharpBtn = document.getElementById('note-' + sharpKeyMap[baseNote]);
       if (sharpBtn) sharpBtn.classList.remove('pressed');
@@ -1173,8 +1229,8 @@ window.addEventListener('keyup', (e) => {
 });
 
 // ==== ★ ランキング取得とページネーション ====
-let globalRankingData = []; // 取得した全データを保存しておく箱
-let currentRankingDisplayCount = 10; // 現在何件目まで表示しているか
+let globalRankingData = [];
+let currentRankingDisplayCount = 10;
 
 function loadLeaderboard() {
   const listEl = document.getElementById('global-ranking-list');
@@ -1184,7 +1240,7 @@ function loadLeaderboard() {
     .then(response => response.json())
     .then(data => {
       globalRankingData = data;
-      currentRankingDisplayCount = 10; // 読み込み直後は10件に戻す
+      currentRankingDisplayCount = 10;
       renderLeaderboard();
     })
     .catch(err => {
@@ -1205,7 +1261,6 @@ function renderLeaderboard() {
   }
 
   let html = '';
-  // 現在の表示件数分だけデータを切り取る
   const displayData = globalRankingData.slice(0, currentRankingDisplayCount);
 
   displayData.forEach((entry, index) => {
@@ -1223,7 +1278,6 @@ function renderLeaderboard() {
   });
   listEl.innerHTML = html;
 
-  // まだ表示していないデータが残っていれば「もっと見る」ボタンを表示
   if (btn) {
     if (globalRankingData.length > currentRankingDisplayCount) {
       btn.style.display = 'block';
@@ -1233,11 +1287,9 @@ function renderLeaderboard() {
   }
 }
 
-// もっと見るボタンが押された時の処理
 function showMoreRankings() {
-  currentRankingDisplayCount += 10; // 表示件数を10件増やす
-  renderLeaderboard(); // 画面を再描画
+  currentRankingDisplayCount += 10;
+  renderLeaderboard();
 }
 
-// アプリ起動時に1回だけランキングを読み込む
 window.addEventListener('load', loadLeaderboard);

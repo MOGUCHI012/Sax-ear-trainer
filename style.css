@@ -1,6 +1,11 @@
-body { font-family: sans-serif; text-align: center; margin: 0; padding: 20px 10px; background-color: #2c3e50; color: #ecf0f1; transition: background-color 0.8s ease; touch-action: manipulation; }
+html, body { overscroll-behavior: none; }
+body { font-family: sans-serif; text-align: center; margin: 0; padding: 20px 10px; background-color: #2c3e50; color: #ecf0f1; transition: background-color 0.8s ease; touch-action: manipulation; -webkit-user-select: none; user-select: none; }
 #app-container { display: flex; max-width: 1100px; margin: 0 auto; gap: 15px; align-items: stretch; justify-content: center; flex-wrap: wrap; }
- 
+
+/* ★ ゲームプレイ中の画面スクロールをロックするためのクラス（JSから付け外しする） */
+html.no-scroll, body.no-scroll { overflow: hidden; height: 100%; overscroll-behavior: none; }
+body.no-scroll { position: fixed; width: 100%; }
+
 #history-sidebar, #analytics-sidebar { flex: 1; min-width: 250px; background: rgba(0,0,0,0.3); padding: 15px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); font-size: 0.9em; box-sizing: border-box; }
 #history-sidebar { max-height: 600px; overflow-y: auto; text-align: left; }
 #history-sidebar h3 { color: #3498db; margin-top: 0; text-align: center; border-bottom: 2px solid rgba(255,255,255,0.1); padding-bottom: 10px;}
@@ -15,7 +20,7 @@ body { font-family: sans-serif; text-align: center; margin: 0; padding: 20px 10p
 .analytics-box { background: rgba(0,0,0,0.2); padding: 10px; border-radius: 8px; margin-top: 20px; text-align: left;}
 .analytics-box h4 { margin: 0 0 10px 0; color: #e74c3c; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px; font-size: 1em;}
 .weak-note-item { display: flex; justify-content: space-between; font-size: 0.85em; margin-bottom: 5px; background: rgba(231, 76, 60, 0.2); padding: 5px; border-radius: 3px;}
- 
+
 .header-section { display: flex; justify-content: center; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
 .header-section h2 { margin: 0; width: 100%; margin-bottom: 10px;}
 select.game-setting { padding: 8px; font-size: 0.9em; border-radius: 5px; border: 2px solid #1abc9c; background-color: #ecf0f1; color: #2c3e50; font-weight: bold; cursor: pointer; outline: none; }
@@ -25,14 +30,14 @@ select.game-setting { padding: 8px; font-size: 0.9em; border-radius: 5px; border
 
 #difficulty-badge { background: #e67e22; color: #fff; padding: 3px 8px; border-radius: 12px; font-weight: bold; font-size: 0.85em; margin-bottom: 10px; display: inline-block;}
 #device-badge { background: #34495e; color: #1abc9c; padding: 3px 8px; border-radius: 12px; font-weight: bold; font-size: 0.8em; margin-bottom: 10px; margin-left: 6px; display: inline-block; border: 1px solid #1abc9c; }
- 
+
 .rule-box { background: rgba(255, 255, 255, 0.1); padding: 10px; border-radius: 5px; font-size: 0.9em; margin-bottom: 15px; text-align: left; line-height: 1.5; }
 .rule-box strong { color: #f1c40f; }
- 
+
 .keys { display: flex; justify-content: center; margin-top: 15px; gap: 0; padding: 0 5px; }
-.key-group { position: relative; flex: 1; max-width: 60px; display: none; }
+.key-group { position: relative; flex: 1; max-width: 60px; display: none; touch-action: manipulation; }
 .key-group.group-visible { display: flex; }
- 
+
 .key { 
   position: relative; width: 100%; height: 150px; flex: 1 1 auto;
   background-color: #fff; color: #2c3e50; 
@@ -40,7 +45,7 @@ select.game-setting { padding: 8px; font-size: 0.9em; border-radius: 5px; border
   cursor: pointer; font-weight: bold; 
   display: flex; flex-direction: column; justify-content: flex-end; align-items: center;
   padding-bottom: 10px; box-shadow: 0 4px rgba(0,0,0,0.5); transition: background-color 0.1s, transform 0.1s; 
-  user-select: none;
+  user-select: none; touch-action: manipulation;
   opacity: 0.3; pointer-events: none; display: none; 
 }
 .key.visible-key { display: flex; }
@@ -50,20 +55,21 @@ select.game-setting { padding: 8px; font-size: 0.9em; border-radius: 5px; border
 .key.correct-highlight { background-color: #2ecc71 !important; color: white !important; opacity: 1 !important;}
 .key.reference-highlight { background-color: #f1c40f !important; color: #2c3e50 !important; opacity: 1 !important;}
 .key small { font-size: 0.7em; color: #7f8c8d; margin-bottom: 3px; }
- 
-/* ★ 黒鍵：白鍵グループの右端に重ねて配置する（ピアノ風レイアウト） */
+
+/* ★ 黒鍵：白鍵グループの右端に重ねて配置する（ピアノ風レイアウト）
+   押しやすさを優先し、実際のピアノより太めのタップしやすいサイズにしている */
 .key.black-key {
   position: absolute; top: 0; right: 0; left: auto;
-  width: 62%; height: 60%; max-width: 32px;
+  width: 76%; height: 66%; max-width: 46px;
   transform: translateX(50%);
   background-color: #1a1a1a; color: #ecf0f1;
-  border: 1px solid #000; border-radius: 0 0 4px 4px;
+  border: 1px solid #000; border-radius: 0 0 6px 6px;
   z-index: 20; box-shadow: 0 4px rgba(0,0,0,0.7);
-  padding-bottom: 6px; font-size: 0.7em;
+  padding-bottom: 6px; font-size: 0.72em;
 }
 .key.black-key small { color: #95a5a6; }
 .key.black-key:active, .key.black-key.pressed { background-color: #333; transform: translateX(50%) translateY(4px); box-shadow: 0 0 #000; }
- 
+
 @media (max-width: 900px) {
   #app-container { flex-direction: column; }
   #history-sidebar { order: 3; max-height: 250px; }
@@ -73,25 +79,49 @@ select.game-setting { padding: 8px; font-size: 0.9em; border-radius: 5px; border
   #combo-container { flex: 1; text-align: center; }
   .key-group { max-width: none; }
   .key { width: 100%; height: 120px; font-size: 0.85em; }
-  .key.black-key { width: 60%; height: 62px; max-width: 26px; font-size: 0.62em; }
+  .key.black-key { width: 74%; height: 70px; max-width: 40px; font-size: 0.68em; }
 }
- 
+
+/* ==== ★ ゲームプレイ中のスマホ横画面レイアウト最適化 ==== */
+@media screen and (max-width: 900px) and (orientation: landscape) {
+  body { padding: 8px 10px; }
+  #app-container { flex-direction: row; flex-wrap: nowrap; align-items: flex-start; gap: 8px; }
+  /* ゲーム中は横幅を鍵盤に使いたいので、サイドバーは畳んで省スペース化 */
+  #history-sidebar, #analytics-sidebar { flex: 0 0 130px; min-width: 130px; max-height: 60vh; padding: 8px; font-size: 0.75em; }
+  #history-sidebar h3, .analytics-box h4 { font-size: 0.85em; }
+  #main-game-board { flex: 1; padding: 10px; min-width: 0; }
+  .start-title { font-size: 1.3em; }
+  .start-subtitle { font-size: 0.8em; margin-bottom: 10px; }
+  .quick-rules { padding: 8px 10px; font-size: 0.78em; gap: 4px; margin-bottom: 8px; }
+  .stage-select { gap: 6px; margin-bottom: 10px; }
+  .stage-card { padding: 8px; min-width: 100px; }
+  .stage-name { font-size: 1em; }
+  .stage-desc { font-size: 0.72em; }
+  .stats-bar, .sub-stats-bar { font-size: 0.8em; }
+  #game-message-area { font-size: 0.95em; min-height: 44px; padding-top: 8px; margin-top: 8px; }
+  .keys { margin-top: 8px; }
+  .key { height: 84px; padding-bottom: 6px; font-size: 0.75em; }
+  .key.black-key { height: 52px; width: 74%; max-width: 36px; }
+  button.action-btn { padding: 10px 20px; font-size: 1em; }
+}
+
 #game-message-area { margin-top: 15px; font-size: 1.1em; font-weight: bold; min-height: 60px; line-height: 1.4; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px; }
 button.action-btn { padding: 15px 30px; font-size: 1.2em; background-color: #e74c3c; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; box-shadow: 0 4px #c0392b; touch-action: manipulation; margin-bottom: 10px; }
 .flash-green { background-color: #27ae60 !important; }
 .flash-red { background-color: #c0392b !important; }
 #countdown { font-size: 4em; font-weight: 900; color: white; display: none; margin-top: 15px; min-height: 60px;}
 .rank-display { font-size: 1.4em; font-weight: bold; margin: 10px 0; padding: 10px; border-radius: 8px; background: rgba(0,0,0,0.3); }
- 
-/* ==== ★ スコア記録UI（GAS/Discord送信）==== */
+
+/* ==== ★ スコア記録UI（GAS/Discord送信）※メッセージエリア内に埋め込み、鍵盤を隠さない ==== */
 .score-submit-box { margin-top: 16px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.1); }
 .score-name-input {
   width: 100%; box-sizing: border-box; padding: 11px; font-size: 1em; font-weight: bold;
   border: 2px solid #1abc9c; border-radius: 6px; background: #ecf0f1; color: #2c3e50; text-align: center;
+  -webkit-user-select: text; user-select: text;
 }
 .score-name-input:focus { outline: none; border-color: #f1c40f; background: #fff9e6; }
 .score-submit-status { min-height: 18px; font-size: 0.85em; margin-top: 8px; color: #2ecc71; }
- 
+
 /* ==== ★ スタート画面（タイトル画面）==== */
 #start-screen { text-align: center; }
 .start-title {
@@ -101,21 +131,21 @@ button.action-btn { padding: 15px 30px; font-size: 1.2em; background-color: #e74
   letter-spacing: 1px;
 }
 .start-subtitle { margin: 0 0 18px 0; color: #95a5a6; font-size: 0.95em; }
- 
+
 .quick-rules {
   display: flex; flex-direction: column; gap: 8px;
   background: rgba(26, 188, 156, 0.12); border: 1px solid rgba(26, 188, 156, 0.4);
   border-radius: 10px; padding: 14px 16px; margin: 0 auto 14px auto; max-width: 420px;
   text-align: left; font-size: 0.95em; font-weight: bold;
 }
- 
+
 .link-btn {
   background: none; border: 1px solid #1abc9c; color: #1abc9c; padding: 8px 16px;
   border-radius: 20px; font-size: 0.85em; font-weight: bold; cursor: pointer; margin-bottom: 20px;
   touch-action: manipulation;
 }
 .link-btn:active { background: rgba(26, 188, 156, 0.2); }
- 
+
 .stage-select { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-bottom: 20px; }
 .stage-card {
   position: relative; flex: 1; min-width: 150px; max-width: 220px;
@@ -135,9 +165,9 @@ button.action-btn { padding: 15px 30px; font-size: 1.2em; background-color: #e74
   margin-top: 8px; font-size: 0.78em; font-weight: bold; color: #e67e22;
   background: rgba(0,0,0,0.3); border-radius: 6px; padding: 4px 6px; display: inline-block;
 }
- 
+
 #game-status-line { font-size: 0.85em; color: #95a5a6; margin-bottom: 8px; font-weight: bold; }
- 
+
 /* ==== ★ ルール詳細モーダル ==== */
 .modal-overlay {
   display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
@@ -149,9 +179,10 @@ button.action-btn { padding: 15px 30px; font-size: 1.2em; background-color: #e74
   background: #223243; border: 1px solid rgba(26,188,156,0.4); border-radius: 12px;
   padding: 22px; max-width: 480px; width: 100%; max-height: 80vh; overflow-y: auto;
   box-shadow: 0 10px 40px rgba(0,0,0,0.5); text-align: left;
+  -webkit-user-select: text; user-select: text;
 }
 .modal-content h3 { margin-top: 0; color: #1abc9c; text-align: center; }
- 
+
 /* ==== ★ タップしてスタート画面（AudioContext解禁用オーバーレイ）==== */
 #tap-to-start-overlay {
   position: fixed; inset: 0; z-index: 2000;
@@ -173,7 +204,7 @@ button.action-btn { padding: 15px 30px; font-size: 1.2em; background-color: #e74
 }
 .tap-warning { font-size: 0.85em; color: #95a5a6; margin: 0; }
 .tap-icon { font-size: 2.5em; margin-bottom: 10px; animation: tap-pulse 1.6s ease-in-out infinite; }
- 
+
 /* ==== ★ 初回チュートリアル（オンボーディング）画面 ==== */
 #tutorial-overlay {
   display: none; position: fixed; inset: 0; z-index: 1900;
@@ -201,7 +232,7 @@ button.action-btn { padding: 15px 30px; font-size: 1.2em; background-color: #e74
 .tutorial-nav { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .tutorial-nav .action-btn { flex: 1; margin-bottom: 0; padding: 13px 10px; font-size: 1.05em; }
 .tutorial-nav .link-btn { margin-bottom: 0; flex-shrink: 0; }
- 
+
 /* ==== ★ BGM ON/OFF トグルボタン ==== */
 #bgm-toggle-btn {
   background: rgba(26, 188, 156, 0.15); border: 1px solid #1abc9c; color: #1abc9c;
@@ -209,7 +240,7 @@ button.action-btn { padding: 15px 30px; font-size: 1.2em; background-color: #e74
   cursor: pointer; margin: 0 auto 16px auto; display: inline-block; touch-action: manipulation;
 }
 #bgm-toggle-btn.bgm-off { border-color: #7f8c8d; color: #7f8c8d; background: rgba(127,140,141,0.1); }
- 
+
 /* ==== ★ キー割り当てカスタマイズUI ==== */
 .keybind-row {
   display: flex; justify-content: space-between; align-items: center;
@@ -224,38 +255,26 @@ button.action-btn { padding: 15px 30px; font-size: 1.2em; background-color: #e74
 .keybind-input {
   width: 46px; text-align: center; padding: 6px 0; font-size: 1em; font-weight: bold;
   border: 2px solid #1abc9c; border-radius: 6px; background: #ecf0f1; color: #2c3e50;
-  cursor: pointer; outline: none;
+  cursor: pointer; outline: none; -webkit-user-select: text; user-select: text;
 }
 .keybind-input:focus { border-color: #f1c40f; background: #fff9e6; }
 
 /* ==== カウントダウンの画面ズレ防止 ==== */
 #countdown {
-  position: absolute; /* 画面から浮かせることでレイアウト崩れを防ぐ */
+  position: absolute;
   top: 30%;
   left: 50%;
   transform: translate(-50%, -50%);
-  pointer-events: none; /* タップの邪魔をしない */
+  pointer-events: none;
   z-index: 100;
 }
 
-/* ==== スマホ縦画面ブロック（メディアクエリ） ==== */
-#portrait-warning {
+/* ==== ★ 縦画面ヒントバナー（ブロックはせず、あくまで推奨として表示するだけ）==== */
+#portrait-hint {
   display: none;
-  position: fixed;
-  top: 0; left: 0; width: 100%; height: 100%;
-  background: #2c3e50;
-  z-index: 9999;
-  color: #fff;
-  text-align: center;
-  padding-top: 30vh;
+  background: rgba(241, 196, 15, 0.12); border: 1px solid #f1c40f; color: #f1c40f;
+  padding: 8px 12px; border-radius: 8px; font-size: 0.78em; margin-bottom: 12px; text-align: center;
 }
-
-/* 画面幅が狭く、かつ縦向き（Portrait）の場合のみ警告を表示 */
 @media screen and (max-width: 768px) and (orientation: portrait) {
-  #portrait-warning {
-    display: block;
-  }
-  #app-container, #tap-to-start-overlay {
-    display: none !important; /* 他の画面を隠す */
-  }
+  #portrait-hint { display: block; }
 }

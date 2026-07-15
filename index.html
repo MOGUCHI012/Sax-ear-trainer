@@ -2,23 +2,16 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=M+PLUS+Rounded+1c:wght@700;900&display=swap" rel="stylesheet">
-<title>Transposing Ear Training - V31</title>
+<title>Transposing Ear Training - V33</title>
 <!-- ★ CSSファイルを外部から読み込む -->
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
  
-<!-- ==== ★ スマホ縦画面時の警告（横画面推奨） ==== -->
-<div id="portrait-warning">
-  <div style="font-size:4em; margin-bottom:10px;">🔄📱</div>
-  <h2 style="margin:0 0 10px 0;">スマホを横向きに<br>してください</h2>
-  <p style="font-size:0.9em; color:#bdc3c7;">このゲームは横画面（Landscape）での<br>プレイに最適化されています。</p>
-</div>
-
 <!-- ==== ★ タップしてスタート画面 ==== -->
 <div id="tap-to-start-overlay" onclick="handleTapToStart();">
   <div class="tap-icon">👆</div>
@@ -62,13 +55,15 @@
 
   <!-- ★メインゲームボード（中央） -->
   <div id="main-game-board">
+
+    <!-- ==== ★ 縦画面ヒント（プレイはブロックしない、あくまで推奨の案内）==== -->
+    <div id="portrait-hint">🔄📱 横画面推奨（縦画面のままでもプレイできます）</div>
  
     <!-- ==== ★ スタート画面 ==== -->
     <div id="start-screen">
       <h1 class="start-title">🎷 移調楽器 音感トレ</h1>
       <p class="start-subtitle">
-        耳を鍛えて、瞬時にピッチを掴め。(A=442)<br>
-        <span style="color:#f1c40f; font-weight:bold; display:inline-block; margin-top:5px;">※スマホは横画面推奨 📱🔄</span>
+        耳を鍛えて、瞬時にピッチを掴め。(A=442)
       </p>
  
       <div class="quick-rules">
@@ -127,7 +122,7 @@
     </div>
  
     <!-- ==== ★ ゲーム画面 ==== -->
-    <div id="game-screen" style="display:none; position:relative;"> <!-- ★ position:relative を追加 -->
+    <div id="game-screen" style="display:none; position:relative;">
       <div id="game-status-line"></div>
  
       <div class="stats-bar">
@@ -143,11 +138,9 @@
  
       <div id="countdown"></div>
       
-      <!-- ★ 高さを固定してズレを防ぐ -->
-      <div id="game-message-area" style="min-height:30px; display:flex; align-items:center; justify-content:center;">楽器とモードを選んでスタート！</div>
+      <div id="game-message-area" style="min-height:30px; display:flex; flex-direction:column; align-items:center; justify-content:center;">楽器とモードを選んでスタート！</div>
  
       <div class="keys">
-        <!-- 鍵盤部分は変更なし -->
         <div class="key-group" data-white-note="LowA">
           <div class="key" id="note-LowA" onpointerdown="event.preventDefault(); checkAnswer('LowA')"><small id="keyhint-LowA">(Z)</small><span id="notelabel-LowA">ラ↓</span></div>
           <div class="key black-key" id="note-LowBb" onpointerdown="event.preventDefault(); checkAnswer('LowBb')"><small id="keyhint-LowBb">Sp+Z</small><span id="notelabel-LowBb">シ♭↓</span></div>
@@ -203,39 +196,43 @@
       <div id="combo-message" style="color:#f1c40f; font-size:0.9em; min-height: 20px;"></div>
     </div>
     <div class="analytics-box">
-      <h4>🚨 苦手な音ワースト3</h4>
+      <h4 id="weak-notes-title">🚨 苦手な音ワースト3</h4>
       <div id="weak-notes-list">
         <div style="font-size:0.8em; color:#bdc3c7;">データが貯まると表示されます</div>
       </div>
+      <button id="weak-notes-more-btn" class="link-btn" style="display:none; width:100%; margin-top:8px; font-size:0.8em; padding:6px;" onclick="showMoreWeakNotes()">🔽 もっと見る</button>
     </div>
   </div>
 </div>
-
-<!-- ==== ★ 新設：ゲームオーバー（スコア送信）モーダル ==== -->
-<div id="game-over-modal-overlay" class="modal-overlay" style="display:none; z-index:2000;">
-  <div class="modal-content" style="text-align:center;">
-    <h2 style="margin-top:0;">🏁 タイムアップ！</h2>
-    <div style="font-size:1.5em; font-weight:bold; margin:10px 0;">スコア: <span id="modal-final-score" style="color:#1abc9c;">0</span></div>
-    <div style="font-size:1.1em; margin-bottom:15px;">最大コンボ: <span id="modal-final-combo" style="color:#f1c40f;">0</span></div>
-    
-    <input type="text" id="player-name-input" placeholder="名前を入力 (10文字以内)" maxlength="10" style="padding:10px; font-size:1.1em; width:80%; border-radius:5px; border:1px solid #7f8c8d; background:#34495e; color:#ecf0f1; margin-bottom:15px; text-align:center;">
-    
-    <button id="submit-score-btn" class="action-btn" style="width:100%; margin-bottom:10px;" onclick="submitScore()">📤 ランキングにスコアを送信</button>
-    
-    <!-- ★ ナビゲーションを2つのボタンに明確化 -->
-    <button class="action-btn" style="width:100%; margin-bottom:10px; background-color:#3498db;" onclick="playAgainFromModal()">🔁 もう一度プレイ</button>
-    <button class="link-btn" style="width:100%; text-align:center; box-sizing:border-box;" onclick="returnToTitleFromModal()">🏠 ステージ選択に戻る</button>
-    
-    <div id="submit-status-msg" style="margin-top:10px; font-size:0.9em; min-height:20px; color:#f1c40f;"></div>
-  </div>
-</div>
  
-<!-- モーダル類（ルール・キーバインド）は変更なしのため省略せずにそのまま記載 -->
 <div id="rules-modal-overlay" class="modal-overlay" onpointerdown="if(event.target===this) closeRulesModal();">
   <div class="modal-content">
     <h3>📖 くわしいルール</h3>
     <div class="rule-box">
-      <!-- (内容は省略せず、元のままです) -->
+      ・<strong>3連続正解</strong>で開放音が<strong>2つ</strong>増え、ミスすると<strong>1つ</strong>減ります。<br>
+      ・間違えた時は<strong>正解の鍵盤が緑色</strong>に光ります。<br>
+      ・<strong>オクターブは区別しません。</strong>出題が「ド↑」でも1オクターブ低い「ド」を押せば正解になります（実践的な音感トレーニングのため）。<br>
+      ・コンボ判定の反応時間はお使いの端末に応じて自動調整されます（PC: 1.0秒 / Android: 1.2秒 / iOS: 1.3秒）。<br>
+      ・9コンボ以降は<strong>3コンボごとに+4秒</strong>のボーナスも発生します。<br>
+      ・<strong>コンボが続くほど背景が熱く変化</strong>し、3コンボごとに専用の<strong>レベルアップ音</strong>が鳴ります。<br>
+      ・出題音・基準音はサックス風の音色でシンセサイズされています🎷<br>
+      ・<strong>ゲーム終了後も鍵盤は鳴らせます。</strong>スコアに影響しないので音の確認に自由に使えます。<br>
+      ・<strong>STAGE 1</strong>：基準音は常に「ド」。半音を含まないメジャースケールのみが出題されます。<br>
+      ・<strong>STAGE 2</strong>：基準音は常に「ド」のまま、黒鍵（半音・クロマチック）も出題されるようになります。20,000点で解放。<br>
+      ・<strong>STAGE 3</strong>：基準音が毎回ランダムになりますが、問題音は常に鳴った音名そのものが正解です（惑わされないように！）。半音を含む全音域が対象。50,000点で解放。<br>
+      ・STAGE 2・3は難易度が高い分、<strong>獲得スコアに補正倍率</strong>がかかります（STAGE2: x1.8 / STAGE3: x2.8）。<br>
+      ・STAGE 3では基準音が鳴る際、<strong>対象の鍵盤が黄色く光り</strong>、テキストでも音名をお知らせします。<br>
+      ・「苦手な音」ランキングは<strong>ステージごとに別々に集計</strong>されます。STAGE 3のみ、苦手な音ではなく<strong>苦手な音程（跳躍）</strong>のランキングが表示されます。<br>
+      ・<strong>PCでの半音入力</strong>：ヘッダーの「半音入力」設定で2つの方式を選べます。<br>
+      　－<strong>専用キー(推奨)</strong>：W, E, T, Y, U などが独立した黒鍵として機能します（DAWのピアノ配列風）。<br>
+      　－<strong>修飾キー(Space)</strong>：<strong>スペースキーを押しながら</strong>白鍵のキーを押すと、その半音になります（例：Space+Aキー＝Db）。<br>
+      　どちらの方式でも、プレイ中・フリープレイの両方で使えます。<br>
+      ・スタート／もう一度プレイのショートカットは<strong>Enterキー</strong>です（Spaceキーとは競合しません）。<br>
+      ・ヘッダーの「表記」設定で、鍵盤や苦手な音ランキングの音名表示を「ドレミ」⇔「CDE」に切り替えられます。<br>
+      ・「⌨️ キー割り当てをカスタマイズ」からPC用のキー配置を自由に変更できます。<br>
+      ・スマホは横画面推奨ですが、縦画面のままでもプレイできます。<br>
+      ・<strong>自己ベストを更新すると</strong>、ゲーム終了時に名前を入力して部内ランキングにスコアを送信できます（鍵盤はそのまま操作できます）。<br>
+      ・30,000点を超えるとSTAGE2、50,000点を超えるとSTAGE3への実力十分！
     </div>
     <button class="action-btn" onpointerdown="event.preventDefault(); closeRulesModal();" style="width:100%;">閉じる</button>
   </div>
