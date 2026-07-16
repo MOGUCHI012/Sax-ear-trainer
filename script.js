@@ -152,7 +152,6 @@ function updateBgmToggleUI() {
   btn.innerText = bgmEnabled ? '🔊 BGM: ON' : '🔇 BGM: OFF';
   btn.classList.toggle('bgm-off', !bgmEnabled);
 }
-updateBgmToggleUI();
 
 // ==== ★ 苦手音 集中特訓モードのトグル ====
 // ONにすると、そのステージで苦手な音（ステージ3は音程）に絞って出題される。
@@ -342,11 +341,9 @@ let gameStartTimestamp = 0;
 const COMBO_TIME_THRESHOLD = COMBO_TIME_THRESHOLDS[deviceType];
 const DEVICE_LABELS = { ios: '📱 iOS (猶予1300ms)', android: '🤖 Android (猶予1200ms)', pc: '💻 PC (猶予1000ms)' };
 
-document.getElementById('notation-select').value = notationMode;
-document.getElementById('semitone-mode-select').value = semitoneInputMode;
-updateNoteLabels();
-updateHistoryUI(); updateAnalyticsUI(); updateKeyboardUI(); renderStageLockState(); updateGameStatusLine(); updateFocusWeakToggleUI(); renderGrowthChart();
-document.getElementById('device-badge').innerText = `判定端末: ${DEVICE_LABELS[deviceType]}`;
+// ※ 画面の初期化処理は、スクリプト末尾の initApp() にまとめて実行しています。
+//   （let/constは宣言前に参照できないため、ここで実行すると
+//     まだ宣言されていない後方の変数を参照して ReferenceError になります）
 
 function getFrequency(noteName) {
   const instrument = document.getElementById('instrument-select').value;
@@ -1467,7 +1464,6 @@ function rebuildKeyMaps() {
     blackKeyMap[key] = note;
   });
 }
-rebuildKeyMaps();
 
 function updateKeyHintLabels() {
   keybindableNotes.forEach(note => {
@@ -1485,7 +1481,6 @@ function updateKeyHintLabels() {
     }
   });
 }
-updateKeyHintLabels();
 
 function showKeybindModal() {
   renderKeybindModalContent();
@@ -1738,5 +1733,27 @@ function showMoreRankings() {
   currentRankingDisplayCount += 10;
   renderLeaderboard();
 }
+
+// ==== ★ 画面の初期化 ====
+// ここはスクリプトの最後で実行する。
+// 途中で実行すると、まだ宣言されていない後方のlet/constを参照して
+// ReferenceError(Temporal Dead Zone)となり、以降の変数が全て初期化されなくなるため。
+function initApp() {
+  document.getElementById('notation-select').value = notationMode;
+  document.getElementById('semitone-mode-select').value = semitoneInputMode;
+  document.getElementById('device-badge').innerText = `判定端末: ${DEVICE_LABELS[deviceType]}`;
+  updateNoteLabels();
+  updateBgmToggleUI();
+  updateFocusWeakToggleUI();
+  rebuildKeyMaps();
+  updateKeyHintLabels();
+  updateHistoryUI();
+  updateAnalyticsUI();
+  updateKeyboardUI();
+  renderStageLockState();
+  updateGameStatusLine();
+  renderGrowthChart();
+}
+initApp();
 
 window.addEventListener('load', loadLeaderboard);
