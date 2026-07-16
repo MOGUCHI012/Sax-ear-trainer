@@ -1261,7 +1261,9 @@ function endGame() {
   clearInterval(timerInterval);
   isPlayingGame = false; 
   isWaitingForAnswer = false;
-  unlockBodyScroll(); // ★ ゲーム終了時にスクロールロックを解除
+  // ★ ここではスクロール用の余白(no-scroll)を解除しない。
+  //   解除すると下部の余白が急に消えて画面が跳ねるうえ、リザルトを読むための
+  //   スクロールもしづらくなるため。スタート画面に戻る時にまとめて解除する。
   
   document.getElementById('instrument-select').disabled = false; 
   document.getElementById('keyboard-mode-select').disabled = false;

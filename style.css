@@ -8,6 +8,15 @@ body { font-family: sans-serif; text-align: center; margin: 0; padding: 20px 10p
    （鍵盤の上でのスワイプはJS側で個別に無効化している） */
 html.no-scroll, body.no-scroll { overscroll-behavior: none; }
 
+/* ★ スマホでブラウザのバーを隠せるようにするための「スクロールのりしろ」。
+   バーが隠れる条件は「下方向にスクロールできること」なので、
+   コンテンツが画面ぴったりに収まっているとバーが出たままになってしまう。
+   そこでプレイ中だけ下に余白を作り、軽く上下スワイプすればバーが隠れるようにする。
+   （鍵盤はコンテンツの下端にあるため、多少スクロールしても画面内に残る） */
+@media screen and (max-width: 900px) {
+  body.no-scroll { padding-bottom: 32vh; }
+}
+
 #history-sidebar, #analytics-sidebar { flex: 1; min-width: 250px; background: rgba(0,0,0,0.3); padding: 15px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); font-size: 0.9em; box-sizing: border-box; }
 #history-sidebar { max-height: 600px; overflow-y: auto; text-align: left; }
 #history-sidebar h3 { color: #3498db; margin-top: 0; text-align: center; border-bottom: 2px solid rgba(255,255,255,0.1); padding-bottom: 10px;}
