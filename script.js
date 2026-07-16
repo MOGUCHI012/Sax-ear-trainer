@@ -13,7 +13,11 @@ document.addEventListener('touchend', function (e) {
   lastTouchEndTime = now;
 }, { passive: false });
 
-// ==== ★ ゲームプレイ中の画面スクロールをロックする ====
+// ==== ★ ゲームプレイ中の画面スクロール制御 ====
+// 完全にスクロールを禁止すると、スマホのブラウザが「上部/下部のバー」を隠すきっかけを
+// 得られず、バーが出たままになって鍵盤が押しづらくなる。
+// そのため、引っ張って更新(pull-to-refresh)やバウンドだけを抑え、
+// 通常のスクロール自体は許可する。誤操作の防止は「鍵盤上のスワイプだけを無効化」して実現する。
 function lockBodyScroll() {
   document.documentElement.classList.add('no-scroll');
   document.body.classList.add('no-scroll');
@@ -22,9 +26,11 @@ function unlockBodyScroll() {
   document.documentElement.classList.remove('no-scroll');
   document.body.classList.remove('no-scroll');
 }
-// プレイ中（カウントダウン含む）はtouchmoveによるスクロール・引っ張りも無効化する
+// ★ 鍵盤の上でのスワイプのみ無効化する（鍵盤が動いてしまうのを防ぐ）。
+//   鍵盤以外の場所ではスクロールできるので、少し上下にスワイプすればバーを隠せる。
 document.addEventListener('touchmove', function (e) {
-  if (isPlayingGame || isCountingDown) {
+  if (!(isPlayingGame || isCountingDown)) return;
+  if (e.target && e.target.closest && e.target.closest('.keys')) {
     e.preventDefault();
   }
 }, { passive: false });
@@ -567,8 +573,10 @@ function updateGameStatusLine() {
 function beginGame() {
   document.getElementById('start-screen').style.display = 'none';
   document.getElementById('game-screen').style.display = 'block';
+  // ★ ゲーム画面では鍵盤に全幅を使いたいので、横画面時にサイドバーを隠すためのクラスを付ける
+  document.body.classList.add('hide-sidebars');
   stopBGM(true);
-  lockBodyScroll(); // ★ ゲーム画面に入るのでスクロールをロック
+  lockBodyScroll();
   startSequence();
 }
 
@@ -576,7 +584,9 @@ function returnToStartScreen() {
   document.getElementById('game-screen').style.display = 'none';
   document.getElementById('start-screen').style.display = 'block';
   document.getElementById('start-btn').style.display = '';
-  unlockBodyScroll(); // ★ 念のためここでもロック解除
+  // ★ スタート画面ではランキング・苦手な音を見せたいのでサイドバーを復帰させる
+  document.body.classList.remove('hide-sidebars');
+  unlockBodyScroll();
   renderStageLockState();
   playBGM();
 }
@@ -597,6 +607,7 @@ let practiceKeyElementsBySemitone = {};
 function openPracticePiano() {
   document.getElementById('start-screen').style.display = 'none';
   document.getElementById('practice-piano-screen').style.display = 'block';
+  document.body.classList.add('hide-sidebars'); // ★ 練習用ピアノも鍵盤に全幅を使う
   practiceCurrentOctave = 0;
   renderPracticeKeys();
 }
@@ -604,6 +615,7 @@ function openPracticePiano() {
 function closePracticePiano() {
   document.getElementById('practice-piano-screen').style.display = 'none';
   document.getElementById('start-screen').style.display = 'block';
+  document.body.classList.remove('hide-sidebars');
   renderStageLockState();
 }
 
@@ -990,7 +1002,11 @@ function checkAnswer(answerNote) {
     }
 
     document.getElementById('combo-message').innerText = "";
-    document.getElementById('game-message-area').innerHTML = `正解: <strong>${document.getElementById('note-'+currentQuestionNote).innerText.replace(/\(.\)/g,'')}</strong>`;
+    // ★ 鍵盤のinnerTextを正規表現で加工すると、キー表記(例:「(Spc+A)」)が残ったり
+    //   改行が混入したりするため、音名は noteNames から直接引く。
+    //   また #game-message-area は flex-direction:column のため、テキストと<strong>が
+    //   別々の行に分かれてしまう。1つの要素にまとめて1行で表示する。
+    document.getElementById('game-message-area').innerHTML = `<div>正解: <strong>${noteNames[currentQuestionNote]}</strong></div>`;
     setTimeout(nextQuestion, 1000);
   }
 }

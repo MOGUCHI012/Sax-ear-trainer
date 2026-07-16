@@ -2,14 +2,11 @@ html, body { overscroll-behavior: none; }
 body { font-family: sans-serif; text-align: center; margin: 0; padding: 20px 10px; background-color: #2c3e50; color: #ecf0f1; transition: background-color 0.8s ease; touch-action: manipulation; -webkit-user-select: none; user-select: none; }
 #app-container { display: flex; max-width: 1100px; margin: 0 auto; gap: 15px; align-items: stretch; justify-content: center; flex-wrap: wrap; }
 
-/* ★ ゲームプレイ中の画面スクロールをロックするためのクラス（JSから付け外しする） */
-html.no-scroll, body.no-scroll { overflow: hidden; height: 100%; overscroll-behavior: none; }
-/* ★ dvh(dynamic viewport height)対応ブラウザでは、アドレスバー等の表示状態に応じて
-      実際に見えている高さへ追従させる（100%/100vhだとバー表示中に画面がはみ出すため） */
-@supports (height: 100dvh) {
-  html.no-scroll, body.no-scroll { height: 100dvh; }
-}
-body.no-scroll { position: fixed; width: 100%; }
+/* ★ プレイ中の画面制御（JSから付け外しする）
+   完全にスクロールを止めるとブラウザの上部/下部バーが隠れなくなり鍵盤が押しづらくなるため、
+   引っ張って更新やバウンドだけを抑え、スクロール自体は許可する。
+   （鍵盤の上でのスワイプはJS側で個別に無効化している） */
+html.no-scroll, body.no-scroll { overscroll-behavior: none; }
 
 #history-sidebar, #analytics-sidebar { flex: 1; min-width: 250px; background: rgba(0,0,0,0.3); padding: 15px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); font-size: 0.9em; box-sizing: border-box; }
 #history-sidebar { max-height: 600px; overflow-y: auto; text-align: left; }
@@ -333,13 +330,21 @@ button.action-btn { padding: 15px 30px; font-size: 1.2em; background-color: #e74
   #portrait-hint { display: block; }
 }
 
-/* ==== ★ ゲームプレイ中のスマホ横画面レイアウト最適化 ==== */
+/* ==== ★ スマホ横画面レイアウト最適化 ==== */
 @media screen and (max-width: 900px) and (orientation: landscape) {
   body { padding: 4px 8px; }
-  #app-container { flex-direction: row; flex-wrap: nowrap; align-items: flex-start; gap: 0; }
-  /* ★ 横画面では鍵盤に全幅を使いたいので、ランキング/苦手な音サイドバーは非表示にする */
-  #history-sidebar, #analytics-sidebar { display: none; }
-  #main-game-board { flex: 1; width: 100%; padding: 6px 10px; min-width: 0; }
+  /* ★ ステージ選択画面では、ランキングや苦手な音も見られるように縦積みで表示する
+        （ゲーム/練習用ピアノ中のみ、下の body.hide-sidebars 側で隠す） */
+  #app-container { flex-direction: column; align-items: stretch; gap: 10px; }
+  #history-sidebar, #analytics-sidebar { max-height: none; }
+  #main-game-board { width: 100%; padding: 6px 10px; min-width: 0; }
+
+  /* ★ ゲーム中・練習用ピアノ中は鍵盤に全幅を使いたいのでサイドバーを隠す */
+  body.hide-sidebars #app-container { flex-direction: row; flex-wrap: nowrap; align-items: flex-start; gap: 0; }
+  body.hide-sidebars #history-sidebar,
+  body.hide-sidebars #analytics-sidebar { display: none; }
+  body.hide-sidebars #main-game-board { flex: 1; }
+
   .start-title { font-size: 1.3em; }
   .start-subtitle { font-size: 0.8em; margin-bottom: 10px; }
   .quick-rules { padding: 8px 10px; font-size: 0.78em; gap: 4px; margin-bottom: 8px; }
