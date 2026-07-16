@@ -154,6 +154,22 @@ function updateBgmToggleUI() {
 }
 updateBgmToggleUI();
 
+// ==== ★ 苦手音 集中特訓モードのトグル ====
+// ONにすると、そのステージで苦手な音（ステージ3は音程）に絞って出題される。
+// スコア計算・ランキング条件は通常と同じ（苦手な音に絞る＝難しくなるため、有利にはならない）。
+function toggleFocusWeakMode() {
+  focusWeakMode = !focusWeakMode;
+  localStorage.setItem('saxEarTrainFocusWeakMode', String(focusWeakMode));
+  updateFocusWeakToggleUI();
+}
+
+function updateFocusWeakToggleUI() {
+  const btn = document.getElementById('focus-weak-toggle-btn');
+  if (!btn) return;
+  btn.innerText = focusWeakMode ? '🎯 苦手特訓: ON' : '🎯 苦手特訓: OFF';
+  btn.classList.toggle('focus-on', focusWeakMode);
+}
+
 const baseFreqs = {
   'C':  MASTER_A * Math.pow(2, -9/12),
   'Bb': MASTER_A * Math.pow(2, -11/12), 
@@ -253,17 +269,51 @@ let score = 0; let timeLeft = 30; let combo = 0; let maxCombo = 0; let streak = 
 // ★ 苦手な音/音程ランキングの表示件数（「もっと見る」で+3件ずつ拡張）
 let weakNotesDisplayCount = 3;
 
+// ★ 今回のプレイ中に間違えた音／音程を記録する（リザルトの「今回の弱点」表示用）
+//   ステージ1・2は音名ごと、ステージ3は音程（跳躍）ごとに集計する
+let sessionMistakes = {};
+
+// ★ 今回のプレイ全体の集計（成長グラフ用に平均反応時間・正答率を履歴へ残す）
+let sessionAnsweredCount = 0;
+let sessionCorrectCount = 0;
+let sessionTotalTime = 0;
+
+// ★ 苦手音 集中特訓モード：ONにすると、苦手な音（音程）に絞って出題する
+let focusWeakMode = (localStorage.getItem('saxEarTrainFocusWeakMode') === 'true');
+
 // ==== ★ ステージ管理 ====
 let currentStage = 1;
-const STAGE2_UNLOCK_SCORE = 20000;
-const STAGE3_UNLOCK_SCORE = 50000;
+// ★ 解放条件は「直前のステージでの自己ベスト」で判定する
+//   STAGE2: STAGE1で70,000点 / STAGE3: STAGE2で200,000点
+const STAGE_UNLOCK_SCORES = { 2: 70000, 3: 200000 };
 const stage3ReferencePool = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
 
 // ★ ステージ別スコア補正倍率：ステージが上がるほど純粋に難しくなり得点が伸びにくくなるため、
 //   同程度の実力ならステージ1に近いスコアが出るように底上げする。
 //   ただしステージ1の記録が簡単に抜かれないよう、完全に同等にはせず控えめに設定している。
 const STAGE_SCORE_MULTIPLIERS = { 1: 1.0, 2: 1.8, 3: 2.8 };
-let bestScore = parseInt(localStorage.getItem('saxEarTrainBestScore') || '0', 10);
+
+// ★ ベストスコアはステージごとに別々に保持する（解放条件の判定に使うため）
+function loadBestScoreByStage() {
+  let data = {};
+  try {
+    const saved = JSON.parse(localStorage.getItem('saxEarTrainBestScoreByStage'));
+    if (saved && typeof saved === 'object') data = saved;
+  } catch (e) { /* 壊れたデータは無視 */ }
+
+  // 旧バージョン（全ステージ共通の単一ベストスコア）からの移行措置：
+  // 旧データはSTAGE1の記録とみなして引き継ぐ
+  const legacyBest = parseInt(localStorage.getItem('saxEarTrainBestScore') || '0', 10);
+  const result = { 1: data[1] || 0, 2: data[2] || 0, 3: data[3] || 0 };
+  if (legacyBest > result[1]) result[1] = legacyBest;
+  return result;
+}
+let bestScoreByStage = loadBestScoreByStage();
+
+// ★ 全ステージ通しての自己ベスト（ゲーム画面の表示用）
+function getOverallBestScore() {
+  return Math.max(bestScoreByStage[1], bestScoreByStage[2], bestScoreByStage[3]);
+}
 
 // ==== ★ 外部送信（GAS/Discord）設定 ====
 // TODO: Discord Webhook URLを実際の値に置き換えてください
@@ -295,7 +345,7 @@ const DEVICE_LABELS = { ios: '📱 iOS (猶予1300ms)', android: '🤖 Android (
 document.getElementById('notation-select').value = notationMode;
 document.getElementById('semitone-mode-select').value = semitoneInputMode;
 updateNoteLabels();
-updateHistoryUI(); updateAnalyticsUI(); updateKeyboardUI(); renderStageLockState(); updateGameStatusLine();
+updateHistoryUI(); updateAnalyticsUI(); updateKeyboardUI(); renderStageLockState(); updateGameStatusLine(); updateFocusWeakToggleUI(); renderGrowthChart();
 document.getElementById('device-badge').innerText = `判定端末: ${DEVICE_LABELS[deviceType]}`;
 
 function getFrequency(noteName) {
@@ -459,9 +509,15 @@ function getEffectiveAvailableNotes() {
 function updateKeyboardUI() { updateDifficulty(); }
 
 // ==== ★ スタート画面 / ステージ選択 / モーダル 制御 ====
+// ★ STAGE2はSTAGE1で、STAGE3はSTAGE2で、それぞれ規定スコアを出すと解放される
+function isStageUnlocked(stageNum) {
+  if (stageNum === 1) return true;
+  return bestScoreByStage[stageNum - 1] >= STAGE_UNLOCK_SCORES[stageNum];
+}
+
 function renderStageLockState() {
-  const stage2Unlocked = bestScore >= STAGE2_UNLOCK_SCORE;
-  const stage3Unlocked = bestScore >= STAGE3_UNLOCK_SCORE;
+  const stage2Unlocked = isStageUnlocked(2);
+  const stage3Unlocked = isStageUnlocked(3);
 
   document.getElementById('stage-2-card').classList.toggle('locked', !stage2Unlocked);
   document.getElementById('stage-2-lock-label').style.display = stage2Unlocked ? 'none' : 'inline-block';
@@ -475,14 +531,15 @@ function renderStageLockState() {
 }
 
 function selectStage(stageNum) {
-  if (stageNum === 2 && bestScore < STAGE2_UNLOCK_SCORE) return;
-  if (stageNum === 3 && bestScore < STAGE3_UNLOCK_SCORE) return;
+  if (!isStageUnlocked(stageNum)) return; // ロック中は無視
   currentStage = stageNum;
   document.getElementById('stage-1-card').classList.toggle('selected', stageNum === 1);
   document.getElementById('stage-2-card').classList.toggle('selected', stageNum === 2);
   document.getElementById('stage-3-card').classList.toggle('selected', stageNum === 3);
   weakNotesDisplayCount = 3; // ★ ステージ切替時はランキング表示件数をリセット
   updateAnalyticsUI(); // ★ ステージごとに異なるランキングをすぐ反映
+  updateGameStatusLine(); // ★ 解放進捗の表示も選択中ステージに合わせて更新
+  renderGrowthChart(); // ★ 成長グラフも選択中ステージのものに切り替える
 }
 
 function showRulesModal() { document.getElementById('rules-modal-overlay').classList.add('visible'); }
@@ -491,16 +548,21 @@ function closeRulesModal() { document.getElementById('rules-modal-overlay').clas
 function updateGameStatusLine() {
   const instrumentText = document.getElementById('instrument-select').selectedOptions[0].text;
   const modeText = document.getElementById('keyboard-mode-select').selectedOptions[0].text;
-  document.getElementById('game-status-line').innerText = `🎷 ${instrumentText} ・ ${modeText} ・ STAGE ${currentStage}`;
+  const focusText = focusWeakMode ? ' ・ 🎯苦手特訓' : '';
+  document.getElementById('game-status-line').innerText = `🎷 ${instrumentText} ・ ${modeText} ・ STAGE ${currentStage}${focusText}`;
 
+  // ★ 「このステージでの自己ベスト」と、次のステージ解放までの残りを表示する
   const progressEl = document.getElementById('stage-progress-line');
   if (progressEl) {
-    if (bestScore < STAGE2_UNLOCK_SCORE) {
-      progressEl.innerText = `🏁 ベストスコア: ${bestScore}点（あと${STAGE2_UNLOCK_SCORE - bestScore}点でSTAGE2解放）`;
-    } else if (bestScore < STAGE3_UNLOCK_SCORE) {
-      progressEl.innerText = `🏁 ベストスコア: ${bestScore}点（あと${STAGE3_UNLOCK_SCORE - bestScore}点でSTAGE3解放）`;
+    const stageBest = bestScoreByStage[currentStage] || 0;
+    const nextStage = currentStage + 1;
+    if (nextStage <= 3 && !isStageUnlocked(nextStage)) {
+      const remain = STAGE_UNLOCK_SCORES[nextStage] - stageBest;
+      progressEl.innerText = `🏁 STAGE${currentStage}ベスト: ${stageBest}点（あと${remain}点でSTAGE${nextStage}解放）`;
+    } else if (nextStage > 3) {
+      progressEl.innerText = `🏁 STAGE${currentStage}ベスト: ${stageBest}点（最終ステージ）`;
     } else {
-      progressEl.innerText = `🏁 ベストスコア: ${bestScore}点（全ステージ解放済み）`;
+      progressEl.innerText = `🏁 STAGE${currentStage}ベスト: ${stageBest}点（STAGE${nextStage}解放済み）`;
     }
   }
 }
@@ -530,9 +592,15 @@ const PRACTICE_WHITE_PATTERN = [
 ];
 const PRACTICE_BLACK_AFTER = { 0: 1, 2: 3, 5: 6, 7: 8, 9: 10 }; // 白鍵オフセット → 黒鍵オフセット（ない場合はキーなし）
 
+// ★ 1キー=オクターブを下げる／0キー=オクターブを上げる、が対象とする「今どのオクターブか」
+let practiceCurrentOctave = 0;
+// ★ 物理キー → DOM要素（キーボード入力時のハイライト用。オクターブ全体で絶対的な半音位置がキー）
+let practiceKeyElementsBySemitone = {};
+
 function openPracticePiano() {
   document.getElementById('start-screen').style.display = 'none';
   document.getElementById('practice-piano-screen').style.display = 'block';
+  practiceCurrentOctave = 0;
   renderPracticeKeys();
 }
 
@@ -550,9 +618,11 @@ function getPracticeFrequency(semitoneFromC) {
 
 function renderPracticeKeys() {
   const octaves = parseInt(document.getElementById('practice-octave-select').value, 10) || 2;
+  if (practiceCurrentOctave > octaves - 1) practiceCurrentOctave = octaves - 1;
   const container = document.getElementById('practice-keys-container');
   if (!container) return;
   container.innerHTML = '';
+  practiceKeyElementsBySemitone = {};
 
   for (let oct = 0; oct < octaves; oct++) {
     PRACTICE_WHITE_PATTERN.forEach(w => {
@@ -569,6 +639,7 @@ function renderPracticeKeys() {
         playPracticeNote(semitone, whiteKey);
       });
       group.appendChild(whiteKey);
+      practiceKeyElementsBySemitone[semitone] = whiteKey;
 
       if (PRACTICE_BLACK_AFTER[w.offset] !== undefined) {
         const blackSemitone = oct * 12 + PRACTICE_BLACK_AFTER[w.offset];
@@ -580,11 +651,14 @@ function renderPracticeKeys() {
           playPracticeNote(blackSemitone, blackKey);
         });
         group.appendChild(blackKey);
+        practiceKeyElementsBySemitone[blackSemitone] = blackKey;
       }
 
       container.appendChild(group);
     });
   }
+
+  updatePracticeOctaveIndicator();
 }
 
 function playPracticeNote(semitoneFromC, btnEl) {
@@ -593,6 +667,64 @@ function playPracticeNote(semitoneFromC, btnEl) {
   if (btnEl) {
     btnEl.classList.add('correct-highlight');
     setTimeout(() => btnEl.classList.remove('correct-highlight'), 300);
+  }
+}
+
+function updatePracticeOctaveIndicator() {
+  const el = document.getElementById('practice-octave-indicator');
+  if (el) el.innerText = `⌨️ PCキー入力オクターブ: ${practiceCurrentOctave + 1}（1キーで下げる／0キーで上げる）`;
+}
+
+// ★ 練習用ピアノ画面専用のキーボード入力処理（本編のkeyMap/blackKeyMapとは完全に分離する）
+//   ・現在のkeyBindings/blackKeyBindingsを流用するので、本編でカスタマイズした配置がそのまま使える
+//   ・1キー/0キーでPC入力が対象とするオクターブを上下できる
+const PRACTICE_BASE_WHITE_NOTES = { 'C': 0, 'D': 2, 'E': 4, 'F': 5, 'G': 7, 'A': 9, 'B': 11 };
+const PRACTICE_BASE_BLACK_NOTES = { 'Db': 1, 'Eb': 3, 'Gb': 6, 'Ab': 8, 'Bb': 10 };
+const PRACTICE_SHARP_FROM_WHITE = { 0: 1, 2: 3, 5: 6, 7: 8, 9: 10 };
+
+function triggerPracticeKeyBySemitone(semitone) {
+  const btn = practiceKeyElementsBySemitone[semitone];
+  if (!btn) return; // 表示中のオクターブ範囲外なら何もしない
+  playPracticeNote(semitone, btn);
+  btn.classList.add('pressed');
+  setTimeout(() => btn.classList.remove('pressed'), 150);
+}
+
+function handlePracticePianoKeydown(e, key) {
+  // 1 / 0 キーでPC入力が対象とするオクターブを上下させる
+  if (key === '1' || key === '0') {
+    e.preventDefault();
+    const octaves = parseInt(document.getElementById('practice-octave-select').value, 10) || 2;
+    if (key === '1') practiceCurrentOctave = Math.max(0, practiceCurrentOctave - 1);
+    if (key === '0') practiceCurrentOctave = Math.min(octaves - 1, practiceCurrentOctave + 1);
+    updatePracticeOctaveIndicator();
+    return;
+  }
+
+  if (e.code === 'Space' || e.key === ' ') {
+    e.preventDefault();
+    isSpaceHeld = true;
+    return;
+  }
+
+  for (const note in PRACTICE_BASE_WHITE_NOTES) {
+    if ((keyBindings[note] || '').toLowerCase() === key) {
+      let semitoneInOctave = PRACTICE_BASE_WHITE_NOTES[note];
+      if (semitoneInputMode === 'modifier' && isSpaceHeld && PRACTICE_SHARP_FROM_WHITE[semitoneInOctave] !== undefined) {
+        semitoneInOctave = PRACTICE_SHARP_FROM_WHITE[semitoneInOctave];
+      }
+      triggerPracticeKeyBySemitone(practiceCurrentOctave * 12 + semitoneInOctave);
+      return;
+    }
+  }
+
+  if (semitoneInputMode === 'dedicated') {
+    for (const note in PRACTICE_BASE_BLACK_NOTES) {
+      if ((blackKeyBindings[note] || '').toLowerCase() === key) {
+        triggerPracticeKeyBySemitone(practiceCurrentOctave * 12 + PRACTICE_BASE_BLACK_NOTES[note]);
+        return;
+      }
+    }
   }
 }
 
@@ -623,6 +755,8 @@ function beginCountdownSequence() {
   document.getElementById('countdown').style.display = 'block';
   
   combo = 0; maxCombo = 0; streak = 0; score = 0; timeLeft = 30; currentNoteCount = 4; recentQuestionNotes = [];
+  sessionMistakes = {}; // ★ 今回の弱点サマリー用の記録をリセット
+  sessionAnsweredCount = 0; sessionCorrectCount = 0; sessionTotalTime = 0; // ★ 成長グラフ用の集計をリセット
   weakNotesDisplayCount = 3;
   updateStats(); updateDifficulty(); updateGameStatusLine();
   document.getElementById('combo-message').innerHTML = '';
@@ -669,6 +803,20 @@ function getNextNoteByWeight() {
     weights[note] = weight; totalWeight += weight;
   });
 
+  // ★ 苦手音 集中特訓モード：出題対象を「苦手な音」の上位半分だけに絞り込む
+  //   （正答率が低い順→同率なら反応が遅い順。データ未計測の音は中間の扱いにする）
+  let basePool = currentAvailableNotes;
+  if (focusWeakMode) {
+    const ranked = currentAvailableNotes.map(note => {
+      const stat = statsForStage[note];
+      const rawAccuracy = stat.attempts > 0 ? (stat.correct / stat.attempts) : 0.5;
+      const avgTime = stat.correct > 0 ? (stat.totalTime / stat.correct) : 1200;
+      return { note, rawAccuracy, avgTime };
+    }).sort(compareWeakness);
+    const takeCount = Math.max(3, Math.ceil(ranked.length / 2));
+    basePool = ranked.slice(0, takeCount).map(r => r.note);
+  }
+
   const isImmediateRepeat = (note) => 
     recentQuestionNotes.length >= 1 && recentQuestionNotes[recentQuestionNotes.length - 1] === note;
 
@@ -683,9 +831,9 @@ function getNextNoteByWeight() {
     return Math.abs(step1) === 1 && step1 === step2;
   };
 
-  let candidates = currentAvailableNotes.filter(n => !isImmediateRepeat(n) && !formsSimpleScaleRun(n));
-  if (candidates.length === 0) candidates = currentAvailableNotes.filter(n => !isImmediateRepeat(n));
-  if (candidates.length === 0) candidates = currentAvailableNotes;
+  let candidates = basePool.filter(n => !isImmediateRepeat(n) && !formsSimpleScaleRun(n));
+  if (candidates.length === 0) candidates = basePool.filter(n => !isImmediateRepeat(n));
+  if (candidates.length === 0) candidates = basePool;
 
   let candidateTotalWeight = 0;
   candidates.forEach(n => { candidateTotalWeight += weights[n]; });
@@ -711,7 +859,7 @@ function nextQuestion() {
   const referenceFreq = getFrequency(referenceNoteName);
 
   document.getElementById('game-message-area').innerHTML = (currentStage === 3)
-    ? `🎵 基準音(${noteNames[referenceNoteName]}) ➡ 問題音...(基準音に惑わされず聴き分けよう)`
+    ? `🎵 基準音(${noteNames[referenceNoteName]}) ➡ 問題音...`
     : `🎵 基準音(${noteNames['C']}) ➡ 問題音...`;
 
   if (currentStage === 3) {
@@ -726,14 +874,16 @@ function nextQuestion() {
   setTimeout(() => {
     if (!isPlayingGame) return;
     currentQuestionNote = getNextNoteByWeight(); 
-    noteStatsByStage[currentStage][currentQuestionNote].attempts++; 
 
-    // ★ ステージ3のみ：基準音からの半音差（0〜11）を「音程」として集計する
+    // ★ ステージ3のみ：基準音からの半音差（0〜11）を「音程」として記録しておく
     if (currentStage === 3) {
       const diff = semitoneOffsets[currentQuestionNote] - semitoneOffsets[currentReferenceNote];
       currentIntervalClass = ((diff % 12) + 12) % 12;
-      intervalStats[currentIntervalClass].attempts++;
     }
+
+    // ※ attempts（出題回数）は「回答した時点」でcheckAnswer側から加算する。
+    //   ここで加算すると、時間切れで答えられなかった問題まで誤答として集計され、
+    //   苦手ランキングの正答率が不当に下がってしまうため。
 
     const questionFreq = getFrequency(currentQuestionNote);
     playSaxTone(questionFreq, 0.6);
@@ -756,7 +906,16 @@ function checkAnswer(answerNote) {
   isWaitingForAnswer = false; 
   const statsForStage = noteStatsByStage[currentStage];
 
+  // ★ 実際に回答されたので、ここで初めて出題回数(attempts)を加算する
+  statsForStage[currentQuestionNote].attempts++;
+  if (currentStage === 3) intervalStats[currentIntervalClass].attempts++;
+
+  // ★ 成長グラフ用に、今回のプレイ全体の集計も取る
+  sessionAnsweredCount++;
+  sessionTotalTime += responseTime;
+
   if (getPitchClass(answerNote) === getPitchClass(currentQuestionNote)) {
+    sessionCorrectCount++;
     streak++; 
     statsForStage[currentQuestionNote].correct++;
     statsForStage[currentQuestionNote].totalTime += responseTime;
@@ -780,14 +939,14 @@ function checkAnswer(answerNote) {
     let stageMultiplier = STAGE_SCORE_MULTIPLIERS[currentStage] || 1.0;
     basePoints = Math.floor(basePoints * difficultyMultiplier * stageMultiplier);
 
-    let msgHTML = `⭕ 正解！ (+${basePoints}点)<br><small>反応: ${responseTime} ms (難易度x${difficultyMultiplier.toFixed(2)} ・ STAGE補正x${stageMultiplier.toFixed(1)})</small>`;
+    let msgHTML = `+${basePoints}点`;
     
     if (responseTime <= COMBO_TIME_THRESHOLD) {
       combo++;
       if (combo > maxCombo) maxCombo = combo;
       let speedMultiplier = Math.min(1.0 + (combo * 0.2), 3.0);
       let finalPoints = Math.floor(basePoints * speedMultiplier);
-      msgHTML = `<span style="color:#f1c40f">⚡ FAST!! (+${finalPoints}点 / 速度x${speedMultiplier.toFixed(1)})</span>`;
+      msgHTML = `<span style="color:#f1c40f">⚡ +${finalPoints}点</span>`;
       score += finalPoints;
 
       // ★ 時間ボーナスはMAX_TIME_LEFTを超えて積み上がらないようにする（無限ゲーム化の防止）
@@ -814,6 +973,11 @@ function checkAnswer(answerNote) {
 
   } else {
     streak = 0; combo = 0;
+
+    // ★ 今回のプレイの弱点として記録する（ステージ3は音程、それ以外は音名で集計）
+    const mistakeKey = (currentStage === 3) ? ('interval:' + currentIntervalClass) : currentQuestionNote;
+    sessionMistakes[mistakeKey] = (sessionMistakes[mistakeKey] || 0) + 1;
+
     currentNoteCount = Math.max(4, currentNoteCount - 1);
     saveStats(); updateAnalyticsUI(); updateDifficulty(); 
     
@@ -829,7 +993,7 @@ function checkAnswer(answerNote) {
     }
 
     document.getElementById('combo-message').innerText = "";
-    document.getElementById('game-message-area').innerHTML = `❌ 惜しい！<br><small>正解は <strong>${document.getElementById('note-'+currentQuestionNote).innerText.replace(/\(.\)/g,'')}</strong> でした。開放音が1つ減ります。</small>`;
+    document.getElementById('game-message-area').innerHTML = `正解: <strong>${document.getElementById('note-'+currentQuestionNote).innerText.replace(/\(.\)/g,'')}</strong>`;
     setTimeout(nextQuestion, 1000);
   }
 }
@@ -857,6 +1021,16 @@ function saveStats() {
 }
 
 // ==== ★ 苦手な音／音程ランキング（ステージごとに切り替え、「もっと見る」で追加表示）====
+// ★ 苦手ランキングの並び順の比較関数
+//   正答率を最優先（低いほど苦手＝上位）とし、正答率が同じ場合のみ反応速度（遅いほど上位）で比較する。
+//   ※以前は (100-正答率)*10 + 平均時間 という合算式だったため、
+//     正答率100%でも反応が遅いと1位になってしまう不具合があった。
+function compareWeakness(a, b) {
+  // 表示上の丸め(100%)に左右されないよう、生の正答率で比較する
+  if (a.rawAccuracy !== b.rawAccuracy) return a.rawAccuracy - b.rawAccuracy; // 正答率が低い順
+  return b.avgTime - a.avgTime; // 同率なら平均反応時間が遅い順
+}
+
 function updateAnalyticsUI() {
   const titleEl = document.getElementById('weak-notes-title');
   const listEl = document.getElementById('weak-notes-list');
@@ -871,10 +1045,10 @@ function updateAnalyticsUI() {
     for (let i = 0; i <= 11; i++) {
       const stat = intervalStats[i];
       if (stat && stat.attempts > 2) {
-        let accuracy = Math.round((stat.correct / stat.attempts) * 100);
+        let rawAccuracy = stat.correct / stat.attempts;
+        let accuracy = Math.round(rawAccuracy * 100);
         let avgTime = stat.correct > 0 ? Math.round(stat.totalTime / stat.correct) : 0;
-        let weakScore = (100 - accuracy) * 10 + avgTime;
-        displayData.push({ label: intervalNames[i], accuracy, avgTime, weakScore });
+        displayData.push({ label: intervalNames[i], accuracy, rawAccuracy, avgTime });
       }
     }
     if (displayData.length === 0) {
@@ -882,7 +1056,7 @@ function updateAnalyticsUI() {
       if (moreBtn) moreBtn.style.display = 'none';
       return;
     }
-    displayData.sort((a, b) => b.weakScore - a.weakScore);
+    displayData.sort(compareWeakness);
     const shown = displayData.slice(0, weakNotesDisplayCount);
     let html = '';
     shown.forEach((d, i) => {
@@ -900,10 +1074,10 @@ function updateAnalyticsUI() {
   allNoteKeys.forEach(note => {
     let stat = statsForStage[note];
     if (stat && stat.attempts > 2) { 
-      let accuracy = Math.round((stat.correct / stat.attempts) * 100);
+      let rawAccuracy = stat.correct / stat.attempts;
+      let accuracy = Math.round(rawAccuracy * 100);
       let avgTime = stat.correct > 0 ? Math.round(stat.totalTime / stat.correct) : 0;
-      let weakScore = (100 - accuracy) * 10 + avgTime;
-      displayData.push({ note: note, accuracy: accuracy, avgTime: avgTime, weakScore: weakScore });
+      displayData.push({ note: note, accuracy: accuracy, rawAccuracy: rawAccuracy, avgTime: avgTime });
     }
   });
   if (displayData.length === 0) {
@@ -911,7 +1085,7 @@ function updateAnalyticsUI() {
     if (moreBtn) moreBtn.style.display = 'none';
     return;
   }
-  displayData.sort((a, b) => b.weakScore - a.weakScore);
+  displayData.sort(compareWeakness);
   const shown = displayData.slice(0, weakNotesDisplayCount);
   let html = ''; 
   shown.forEach((d, i) => {
@@ -926,14 +1100,148 @@ function showMoreWeakNotes() {
   updateAnalyticsUI();
 }
 
+// ==== ★ 成長グラフ（外部ライブラリ不要のインラインSVGで描画）====
+let chartMetric = 'score'; // 'score' | 'avgTime' | 'accuracy'
+
+const CHART_METRICS = {
+  score:    { label: 'スコア',   unit: '点',  color: '#1abc9c', betterIsHigh: true },
+  avgTime:  { label: '平均反応', unit: 'ms',  color: '#f1c40f', betterIsHigh: false },
+  accuracy: { label: '正答率',   unit: '%',   color: '#3498db', betterIsHigh: true }
+};
+
+function setChartMetric(metric) {
+  chartMetric = metric;
+  document.querySelectorAll('.chart-tab').forEach(b => {
+    b.classList.toggle('active', b.dataset.metric === metric);
+  });
+  renderGrowthChart();
+}
+
+function renderGrowthChart() {
+  const el = document.getElementById('growth-chart');
+  const summaryEl = document.getElementById('growth-chart-summary');
+  const titleEl = document.getElementById('growth-chart-title');
+  if (!el) return;
+
+  const conf = CHART_METRICS[chartMetric];
+  if (titleEl) titleEl.innerText = `📈 STAGE${currentStage} の成長`;
+
+  // ★ 旧バージョンの履歴にはstageが無いため、STAGE1の記録として扱う
+  const data = scoreHistory
+    .filter(h => (h.stage || 1) === currentStage)
+    .filter(h => h[chartMetric] !== undefined && h[chartMetric] !== null)
+    .slice(-20); // 直近20回分
+
+  if (data.length < 2) {
+    el.innerHTML = `<div class="chart-empty">STAGE${currentStage}を2回以上プレイすると<br>グラフが表示されます</div>`;
+    if (summaryEl) summaryEl.innerHTML = '';
+    return;
+  }
+
+  const values = data.map(d => Number(d[chartMetric]) || 0);
+  let min = Math.min(...values);
+  let max = Math.max(...values);
+  if (min === max) { min -= 1; max += 1; } // 全て同じ値でも描画できるようにする
+
+  const W = 300, H = 120;
+  const padL = 38, padR = 8, padT = 10, padB = 14;
+  const plotW = W - padL - padR;
+  const plotH = H - padT - padB;
+
+  const xAt = (i) => padL + plotW * (i / (data.length - 1));
+  const yAt = (v) => padT + plotH - ((v - min) / (max - min)) * plotH;
+
+  const linePoints = values.map((v, i) => `${xAt(i).toFixed(1)},${yAt(v).toFixed(1)}`).join(' ');
+  // 折れ線の下を薄く塗る（面グラフ風）
+  const areaPoints = `${padL},${padT + plotH} ${linePoints} ${(padL + plotW).toFixed(1)},${padT + plotH}`;
+
+  // 目盛り（上・中・下の3本）
+  let gridSvg = '';
+  for (let g = 0; g <= 2; g++) {
+    const v = min + (max - min) * (1 - g / 2);
+    const gy = padT + (plotH * g / 2);
+    gridSvg += `<line x1="${padL}" y1="${gy.toFixed(1)}" x2="${W - padR}" y2="${gy.toFixed(1)}" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>`;
+    gridSvg += `<text x="${padL - 4}" y="${(gy + 3).toFixed(1)}" fill="#95a5a6" font-size="8" text-anchor="end">${Math.round(v)}</text>`;
+  }
+
+  // データ点（最新の点だけ強調）
+  let dotsSvg = '';
+  values.forEach((v, i) => {
+    const isLast = i === values.length - 1;
+    dotsSvg += `<circle cx="${xAt(i).toFixed(1)}" cy="${yAt(v).toFixed(1)}" r="${isLast ? 3.5 : 2}" fill="${isLast ? '#fff' : conf.color}" stroke="${conf.color}" stroke-width="${isLast ? 2 : 0}"/>`;
+  });
+
+  el.innerHTML = `
+    <svg viewBox="0 0 ${W} ${H}" class="growth-chart-svg" preserveAspectRatio="none" role="img" aria-label="${conf.label}の推移">
+      ${gridSvg}
+      <polygon points="${areaPoints}" fill="${conf.color}" opacity="0.14"/>
+      <polyline points="${linePoints}" fill="none" stroke="${conf.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+      ${dotsSvg}
+    </svg>
+    <div class="chart-axis-note">← 古い　　直近${data.length}回　　新しい →</div>
+  `;
+
+  // ★ 「最初と比べてどれだけ伸びたか」のサマリー
+  if (summaryEl) {
+    const first = values[0];
+    const last = values[values.length - 1];
+    const diff = last - first;
+    const improved = conf.betterIsHigh ? (diff > 0) : (diff < 0);
+    const sign = diff > 0 ? '+' : '';
+    const color = diff === 0 ? '#95a5a6' : (improved ? '#2ecc71' : '#e74c3c');
+    const icon = diff === 0 ? '→' : (improved ? '📈' : '📉');
+    const best = conf.betterIsHigh ? Math.max(...values) : Math.min(...values);
+    summaryEl.innerHTML = `
+      <div class="chart-summary-row">
+        <span>最新: <strong style="color:${conf.color};">${last}${conf.unit}</strong></span>
+        <span style="color:${color};">${icon} ${sign}${diff}${conf.unit}</span>
+      </div>
+      <div class="chart-summary-sub">${conf.betterIsHigh ? '自己最高' : '自己最速'}: ${best}${conf.unit}（直近20回中）</div>
+    `;
+  }
+}
+
 function updateHistoryUI() {
   const listEl = document.getElementById('history-list');
   if (scoreHistory.length === 0) { listEl.innerHTML = "<div style='color:#bdc3c7; text-align:center;'>まだ履歴がありません</div>"; return; }
   let html = '';
   scoreHistory.slice().reverse().slice(0, 10).forEach((data) => {
-    html += `<div class="history-item"><div style="font-size:1.1em; font-weight:bold;">${data.score} 点</div><div style="color:#bdc3c7;">最大コンボ: ${data.streak} <br><small>${data.date}</small></div></div>`;
+    const stageLabel = `STAGE${data.stage || 1}`;
+    const focusLabel = data.focus ? ' 🎯' : '';
+    const detail = (data.accuracy !== undefined)
+      ? `正答率 ${data.accuracy}% ・ 平均 ${data.avgTime}ms<br>`
+      : '';
+    html += `<div class="history-item"><div style="font-size:1.1em; font-weight:bold;">${data.score} 点 <span style="font-size:0.6em; color:#f1c40f;">${stageLabel}${focusLabel}</span></div><div style="color:#bdc3c7; font-size:0.85em;">最大コンボ: ${data.streak}<br>${detail}<small>${data.date}</small></div></div>`;
   });
   listEl.innerHTML = html;
+}
+
+// ★ 今回のプレイで間違えた音／音程のワースト3を、リザルト用のHTMLとして生成する
+function buildSessionWeaknessHTML() {
+  const entries = Object.keys(sessionMistakes)
+    .map(key => ({ key, count: sessionMistakes[key] }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 3);
+
+  if (entries.length === 0) {
+    return `<div class="session-weak-box session-weak-perfect">🎉 ノーミス！今回は間違いゼロでした</div>`;
+  }
+
+  const label = (key) => {
+    if (key.startsWith('interval:')) {
+      const idx = parseInt(key.split(':')[1], 10);
+      return intervalNames[idx] || '?';
+    }
+    return noteNames[key] || key;
+  };
+
+  const title = (currentStage === 3) ? '今回ミスした音程' : '今回ミスした音';
+  let html = `<div class="session-weak-box"><div class="session-weak-title">📝 ${title}</div><div class="session-weak-items">`;
+  entries.forEach(e => {
+    html += `<span class="session-weak-item"><strong>${label(e.key)}</strong> ×${e.count}</span>`;
+  });
+  html += `</div></div>`;
+  return html;
 }
 
 function endGame() {
@@ -951,23 +1259,37 @@ function endGame() {
   updateBackgroundByCombo(0);
   updateDifficulty(); // ★ フリープレイ用に全音アクティブ化（鍵盤はそのまま使える）
   
-  const dateStr = new Date().toLocaleString();
-  scoreHistory.push({ score: score, streak: finalCombo, date: dateStr });
+  // ★ 成長グラフ用に、ステージ・平均反応時間・正答率・タイムスタンプも履歴に残す
+  const now = new Date();
+  scoreHistory.push({
+    score: score,
+    streak: finalCombo,
+    date: now.toLocaleString(),
+    ts: now.getTime(),
+    stage: currentStage,
+    avgTime: sessionAnsweredCount > 0 ? Math.round(sessionTotalTime / sessionAnsweredCount) : 0,
+    accuracy: sessionAnsweredCount > 0 ? Math.round((sessionCorrectCount / sessionAnsweredCount) * 100) : 0,
+    focus: focusWeakMode
+  });
+  // 履歴が無限に増えないよう直近200件までに制限する
+  if (scoreHistory.length > 200) scoreHistory = scoreHistory.slice(-200);
   localStorage.setItem('saxEarTrainHistory', JSON.stringify(scoreHistory));
   updateHistoryUI(); 
+  renderGrowthChart(); // ★ グラフも最新の記録で更新
   
-  const wasStage2Unlocked = bestScore >= STAGE2_UNLOCK_SCORE;
-  const wasStage3Unlocked = bestScore >= STAGE3_UNLOCK_SCORE;
-  const isNewBest = score > bestScore;
+  // ★ ベストスコアは「プレイしたステージ」の記録として更新する
+  const wasStage2Unlocked = isStageUnlocked(2);
+  const wasStage3Unlocked = isStageUnlocked(3);
+  const isNewBest = score > (bestScoreByStage[currentStage] || 0);
   if (isNewBest) {
-    bestScore = score;
-    localStorage.setItem('saxEarTrainBestScore', String(bestScore));
+    bestScoreByStage[currentStage] = score;
+    localStorage.setItem('saxEarTrainBestScoreByStage', JSON.stringify(bestScoreByStage));
   }
   renderStageLockState();
   updateGameStatusLine();
   
-  const stage2JustUnlocked = !wasStage2Unlocked && bestScore >= STAGE2_UNLOCK_SCORE;
-  const stage3JustUnlocked = !wasStage3Unlocked && bestScore >= STAGE3_UNLOCK_SCORE;
+  const stage2JustUnlocked = !wasStage2Unlocked && isStageUnlocked(2);
+  const stage3JustUnlocked = !wasStage3Unlocked && isStageUnlocked(3);
   
   let rankName = ""; let rankColor = ""; let rankDesc = "";
   if (score < 10000) { rankName = "🥉 ビギナー"; rankColor = "#cd7f32"; rankDesc = "近い音程の距離感が掴めてきたレベル"; }
@@ -978,15 +1300,24 @@ function endGame() {
   else if (score < 150000) { rankName = "🏆 グランドマスター"; rankColor = "#8e44ad"; rankDesc = "ステージ3の惑わせにも動じない、名手と呼ぶにふさわしい領域"; }
   else { rankName = "✨ 神の耳"; rankColor = "#ff4500"; rankDesc = "システムと完全に同化。限界スピードでの連続正解を維持できる究極の耳！"; }
   
-  let endMsg = `🏁 タイムアップ！<br>最終スコア: ${score}点 (最大コンボ: ${finalCombo})<br>`;
+  let endMsg = `<div class="result-score-line">🏁 ${score}点 <span style="font-size:0.75em; color:#bdc3c7;">(最大コンボ: ${finalCombo})</span></div>`;
   endMsg += `<div class="rank-display" style="color:${rankColor};">${rankName}<br><span style="font-size:0.55em; font-weight:normal; color:#ecf0f1;">${rankDesc}</span></div>`;
-  if (stage2JustUnlocked) { endMsg += `<div style="color:#2ecc71; font-weight:bold; margin-bottom:10px;">🔓 ステージ2がアンロックされました！</div>`; }
-  if (stage3JustUnlocked) { endMsg += `<div style="color:#2ecc71; font-weight:bold; margin-bottom:10px;">🔓 ステージ3がアンロックされました！</div>`; }
+
+  // ★★★ 操作ボタンはリザルトの「上部」に置く。
+  //     スマホ横画面では画面が狭く、弱点サマリー等を先に置くと「もう一度プレイ」が
+  //     画面外に押し出されて連続プレイの妨げになるため。 ★★★
+  endMsg += `<div class="result-actions">`;
+  endMsg += `<button class="action-btn" onclick="startSequence()">もう一度プレイ <small>(Enter)</small></button>`;
+  endMsg += `<button class="link-btn" onclick="returnToStartScreen();">🔁 ステージ選択</button>`;
+  endMsg += `</div>`;
+
+  if (stage2JustUnlocked) { endMsg += `<div style="color:#2ecc71; font-weight:bold; margin-bottom:6px;">🔓 ステージ2がアンロックされました！</div>`; }
+  if (stage3JustUnlocked) { endMsg += `<div style="color:#2ecc71; font-weight:bold; margin-bottom:6px;">🔓 ステージ3がアンロックされました！</div>`; }
 
   // ★★★ ランキング送信UIはフルスクリーンモーダルではなく、メッセージエリア内に直接埋め込む。
   //     こうすることで、下の鍵盤（フリープレイ用ピアノ）が隠れず、常に操作できる。 ★★★
   if (isNewBest) {
-    endMsg += `<div style="color:#f1c40f; font-weight:bold; margin-top:6px;">🎉 自己ベスト更新！ランキングに記録しよう</div>`;
+    endMsg += `<div style="color:#f1c40f; font-weight:bold; margin-top:6px;">🎉 STAGE${currentStage} 自己ベスト更新！ランキングに記録しよう</div>`;
     endMsg += `
       <div class="score-submit-box">
         <input type="text" id="player-name-input" class="score-name-input" placeholder="お名前を入力 (10文字以内)" maxlength="10">
@@ -995,9 +1326,10 @@ function endGame() {
       </div>`;
   }
 
-  endMsg += `<div style="font-size:0.85em; color:#1abc9c; margin: 10px 0;">🎹 下の鍵盤はそのまま鳴らせます。間違えた音の確認やピッチチェックにどうぞ。</div>`;
-  endMsg += `<button class="action-btn" onclick="startSequence()" style="margin-top:10px;">もう一度プレイ <small>(Enter)</small></button><br>`;
-  endMsg += `<button class="link-btn" onclick="returnToStartScreen();" style="margin-top:6px;">🔁 ステージ選択・設定に戻る</button>`;
+  // ★ 今回のプレイの弱点サマリー
+  endMsg += buildSessionWeaknessHTML();
+
+  endMsg += `<div style="font-size:0.8em; color:#1abc9c; margin: 8px 0;">🎹 下の鍵盤はそのまま鳴らせます。ピッチ確認にどうぞ。</div>`;
 
   document.getElementById('game-message-area').innerHTML = endMsg;
 
@@ -1008,6 +1340,23 @@ function endGame() {
 }
 
 // ==== ★ スコアの外部送信（GASスプレッドシートへ記録＋Discordへの閾値通知）====
+// ★ 端末ごとの匿名ID（ランキングの名寄せ用）
+//   名前を変えて何度も送信されるとランキングに同一人物が複数並んでしまうため、
+//   端末ごとに固定のIDを一緒に送り、GAS側で「1端末＝1エントリ」に集約できるようにする。
+//   ※個人を特定する情報は一切含まない、ランダムな文字列です。
+function getOrCreateDeviceId() {
+  let id = localStorage.getItem('saxEarTrainDeviceId');
+  if (!id) {
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+      id = window.crypto.randomUUID();
+    } else {
+      id = 'dev-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+    }
+    localStorage.setItem('saxEarTrainDeviceId', id);
+  }
+  return id;
+}
+
 function submitScore(finalScore, finalCombo) {
   const statusEl = document.getElementById('submit-status-msg');
   const nameInput = document.getElementById('player-name-input');
@@ -1029,7 +1378,7 @@ function submitScore(finalScore, finalCombo) {
   fetch(GAS_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain' }, // ★ GAS側のCORSプリフライト回避のためtext/plainを維持
-    body: JSON.stringify({ name: playerName, score: finalScore, combo: finalCombo })
+    body: JSON.stringify({ name: playerName, score: finalScore, combo: finalCombo, deviceId: getOrCreateDeviceId() })
   })
   .then(() => {
     if (statusEl) statusEl.innerText = '✅ 送信完了！ランキングを更新しました';
@@ -1232,6 +1581,15 @@ let isSpaceHeld = false;
 window.addEventListener('keydown', (e) => {
   const key = e.key.toLowerCase();
 
+  // ★ 練習用ピアノ画面が表示中は、専用のキー入力ロジックに完全に委譲する（本編の判定は行わない）
+  const practiceScreenVisible = document.getElementById('practice-piano-screen').style.display !== 'none';
+  if (practiceScreenVisible) {
+    const activeTag = document.activeElement ? document.activeElement.tagName : '';
+    if (activeTag === 'SELECT' || activeTag === 'INPUT' || activeTag === 'TEXTAREA') return;
+    handlePracticePianoKeydown(e, key);
+    return;
+  }
+
   if (e.code === 'Space' || e.key === ' ') {
     const activeTag = document.activeElement ? document.activeElement.tagName : '';
     if (activeTag === 'SELECT' || activeTag === 'INPUT' || activeTag === 'TEXTAREA') return;
@@ -1306,6 +1664,17 @@ window.addEventListener('keyup', (e) => {
 let globalRankingData = [];
 let currentRankingDisplayCount = 10;
 
+// ★ 他人が入力した名前をそのままinnerHTMLに挿入するとスクリプトを埋め込まれる恐れがある(XSS)ため、
+//   表示前に必ずHTMLとして無害化する
+function escapeHtml(str) {
+  return String(str == null ? '' : str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function loadLeaderboard() {
   const listEl = document.getElementById('global-ranking-list');
   if (!listEl) return;
@@ -1313,7 +1682,8 @@ function loadLeaderboard() {
   fetch(GAS_URL)
     .then(response => response.json())
     .then(data => {
-      globalRankingData = data;
+      // ★ GASが配列以外（エラーオブジェクト等）を返した場合に落ちないようガードする
+      globalRankingData = Array.isArray(data) ? data : [];
       currentRankingDisplayCount = 10;
       renderLeaderboard();
     })
@@ -1340,13 +1710,16 @@ function renderLeaderboard() {
   displayData.forEach((entry, index) => {
     let rankColor = index === 0 ? '#f1c40f' : index === 1 ? '#bdc3c7' : index === 2 ? '#cd7f32' : '#ecf0f1';
     let rankIcon = index === 0 ? '👑' : index + 1;
-    
+    const safeName = escapeHtml(entry.name);
+    const safeScore = escapeHtml(entry.score);
+    const safeCombo = escapeHtml(entry.combo);
+
     html += `<div style="display:flex; justify-content:space-between; background:rgba(255,255,255,0.05); padding:8px; margin-bottom:5px; border-radius:5px; align-items:center;">
                <div style="font-weight:bold; color:${rankColor}; width:30px; font-size:1.2em;">${rankIcon}</div>
-               <div style="flex-grow:1; text-align:left; font-weight:bold;">${entry.name}</div>
+               <div style="flex-grow:1; text-align:left; font-weight:bold; word-break:break-all;">${safeName}</div>
                <div style="text-align:right;">
-                 <span style="color:#1abc9c; font-weight:bold; font-size:1.1em;">${entry.score}</span><br>
-                 <span style="font-size:0.7em; color:#95a5a6;">${entry.combo} Combo</span>
+                 <span style="color:#1abc9c; font-weight:bold; font-size:1.1em;">${safeScore}</span><br>
+                 <span style="font-size:0.7em; color:#95a5a6;">${safeCombo} Combo</span>
                </div>
              </div>`;
   });

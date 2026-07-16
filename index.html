@@ -2,11 +2,22 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=M+PLUS+Rounded+1c:wght@700;900&display=swap" rel="stylesheet">
 <title>Transposing Ear Training - V33</title>
+
+<!-- ★ PWA対応：ホーム画面に追加するとブラウザUI無しの全画面アプリとして起動できる -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1abc9c">
+<!-- TODO: リリース時にアイコン(icon-192.png / icon-512.png)を用意して、下の行と manifest.json のicons欄を有効化してください -->
+<!-- <link rel="apple-touch-icon" href="icon-192.png"> -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Ear Trainer">
+<meta name="mobile-web-app-capable" content="yes">
+
 <!-- ★ CSSファイルを外部から読み込む -->
 <link rel="stylesheet" href="style.css">
 </head>
@@ -48,7 +59,16 @@
     </div>
     <button id="show-more-ranking-btn" class="link-btn" style="display:none; width:100%; margin-top:10px; font-size:0.85em; padding:6px;" onclick="showMoreRankings()">🔽 もっと見る</button>
     
-    <h3 style="margin-top: 20px; font-size: 1.0em;">📈 あなたのローカル履歴</h3>
+    <h3 id="growth-chart-title" style="margin-top: 20px; font-size: 1.0em;">📈 STAGE1 の成長</h3>
+    <div class="chart-metric-tabs">
+      <button class="chart-tab active" data-metric="score" onclick="setChartMetric('score')">スコア</button>
+      <button class="chart-tab" data-metric="avgTime" onclick="setChartMetric('avgTime')">反応速度</button>
+      <button class="chart-tab" data-metric="accuracy" onclick="setChartMetric('accuracy')">正答率</button>
+    </div>
+    <div id="growth-chart"></div>
+    <div id="growth-chart-summary"></div>
+
+    <h3 style="margin-top: 20px; font-size: 1.0em;">🗒️ プレイ履歴</h3>
     <div id="history-list"></div>
   </div>
   <!-- ★サイドバーここまで -->
@@ -69,7 +89,7 @@
       <div class="quick-rules">
         <div>🎧 音を聴いて鍵盤を叩く！</div>
         <div>🔥 連続正解でコンボ発生、タイムボーナスも！</div>
-        <div>🏆 スコアを伸ばしてステージ2・3を解放！</div>
+        <div>🏆 STAGE1で70,000点 → STAGE2で200,000点で解放！</div>
       </div>
  
       <button class="link-btn" onpointerdown="event.preventDefault(); showRulesModal();">📖 詳しいルールを見る (How to play)</button>
@@ -77,6 +97,7 @@
       <button class="link-btn" onclick="openPracticePiano();">🎹 練習用ピアノ</button>
       <br>
       <button id="bgm-toggle-btn" onclick="toggleBGM();">🔊 BGM: ON</button>
+      <button id="focus-weak-toggle-btn" onclick="toggleFocusWeakMode();">🎯 苦手特訓: OFF</button>
  
       <div class="stage-select">
         <div class="stage-card selected" id="stage-1-card" onpointerdown="event.preventDefault(); selectStage(1);">
@@ -88,13 +109,13 @@
           <div class="stage-badge">STAGE 2</div>
           <div class="stage-name">固定基準音・半音あり</div>
           <div class="stage-desc">基準音は常に「ド」。黒鍵（半音・クロマチック）も出題範囲に。</div>
-          <div class="lock-overlay" id="stage-2-lock-label">🔒 20,000点で解放</div>
+          <div class="lock-overlay" id="stage-2-lock-label">🔒 STAGE1で70,000点</div>
         </div>
         <div class="stage-card locked" id="stage-3-card" onpointerdown="event.preventDefault(); selectStage(3);">
           <div class="stage-badge">STAGE 3</div>
           <div class="stage-name">ランダム基準音</div>
           <div class="stage-desc">基準音が毎回ランダム。半音を含む全音域から出題。</div>
-          <div class="lock-overlay" id="stage-3-lock-label">🔒 50,000点で解放</div>
+          <div class="lock-overlay" id="stage-3-lock-label">🔒 STAGE2で200,000点</div>
         </div>
       </div>
  
@@ -208,6 +229,8 @@
         </select>
       </div>
 
+      <div id="practice-octave-indicator" style="color:#f1c40f; font-size:0.85em; font-weight:bold; margin-bottom:10px;">⌨️ PCキー入力オクターブ: 1（1キーで下げる／0キーで上げる）</div>
+
       <div id="practice-keys-container" class="keys"></div>
 
       <button class="link-btn" onclick="closePracticePiano();" style="margin-top:16px;">🔙 ステージ選択に戻る</button>
@@ -244,8 +267,8 @@
       ・出題音・基準音はサックス風の音色でシンセサイズされています🎷<br>
       ・<strong>ゲーム終了後も鍵盤は鳴らせます。</strong>スコアに影響しないので音の確認に自由に使えます。<br>
       ・<strong>STAGE 1</strong>：基準音は常に「ド」。半音を含まないメジャースケールのみが出題されます。<br>
-      ・<strong>STAGE 2</strong>：基準音は常に「ド」のまま、黒鍵（半音・クロマチック）も出題されるようになります。20,000点で解放。<br>
-      ・<strong>STAGE 3</strong>：基準音が毎回ランダムになりますが、問題音は常に鳴った音名そのものが正解です（惑わされないように！）。半音を含む全音域が対象。50,000点で解放。<br>
+      ・<strong>STAGE 2</strong>：基準音は常に「ド」のまま、黒鍵（半音・クロマチック）も出題されるようになります。<strong>STAGE1で70,000点</strong>を出すと解放。<br>
+      ・<strong>STAGE 3</strong>：基準音が毎回ランダムになりますが、問題音は常に鳴った音名そのものが正解です（惑わされないように！）。半音を含む全音域が対象。<strong>STAGE2で200,000点</strong>を出すと解放。<br>
       ・STAGE 2・3は難易度が高い分、<strong>獲得スコアに補正倍率</strong>がかかります（STAGE2: x1.8 / STAGE3: x2.8）。<br>
       ・STAGE 3では基準音が鳴る際、<strong>対象の鍵盤が黄色く光り</strong>、テキストでも音名をお知らせします。<br>
       ・「苦手な音」ランキングは<strong>ステージごとに別々に集計</strong>されます。STAGE 3のみ、苦手な音ではなく<strong>苦手な音程（跳躍）</strong>のランキングが表示されます。<br>
@@ -258,7 +281,9 @@
       ・「⌨️ キー割り当てをカスタマイズ」からPC用のキー配置を自由に変更できます。<br>
       ・スマホは横画面推奨ですが、縦画面のままでもプレイできます。<br>
       ・<strong>自己ベストを更新すると</strong>、ゲーム終了時に名前を入力して部内ランキングにスコアを送信できます（鍵盤はそのまま操作できます）。<br>
-      ・30,000点を超えるとSTAGE2、50,000点を超えるとSTAGE3への実力十分！
+      ・ベストスコアは<strong>ステージごとに別々に記録</strong>されます。ランキングへの送信も、そのステージでの自己ベストを更新した時に可能です。<br>
+      ・<strong>🎯 苦手特訓モード</strong>：ONにすると、そのステージであなたが苦手な音（STAGE3は苦手な音程）に絞って出題されます。集中的に弱点を潰したい時にどうぞ。スコア計算やランキングの条件は通常と同じです。<br>
+      ・プレイ終了後のリザルトに、<strong>今回ミスした音のワースト3</strong>が表示されます。次のプレイの狙いどころにしてください。
     </div>
     <button class="action-btn" onpointerdown="event.preventDefault(); closeRulesModal();" style="width:100%;">閉じる</button>
   </div>

@@ -4,12 +4,33 @@ body { font-family: sans-serif; text-align: center; margin: 0; padding: 20px 10p
 
 /* ★ ゲームプレイ中の画面スクロールをロックするためのクラス（JSから付け外しする） */
 html.no-scroll, body.no-scroll { overflow: hidden; height: 100%; overscroll-behavior: none; }
+/* ★ dvh(dynamic viewport height)対応ブラウザでは、アドレスバー等の表示状態に応じて
+      実際に見えている高さへ追従させる（100%/100vhだとバー表示中に画面がはみ出すため） */
+@supports (height: 100dvh) {
+  html.no-scroll, body.no-scroll { height: 100dvh; }
+}
 body.no-scroll { position: fixed; width: 100%; }
 
 #history-sidebar, #analytics-sidebar { flex: 1; min-width: 250px; background: rgba(0,0,0,0.3); padding: 15px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); font-size: 0.9em; box-sizing: border-box; }
 #history-sidebar { max-height: 600px; overflow-y: auto; text-align: left; }
 #history-sidebar h3 { color: #3498db; margin-top: 0; text-align: center; border-bottom: 2px solid rgba(255,255,255,0.1); padding-bottom: 10px;}
 .history-item { background: rgba(255,255,255,0.1); padding: 8px; border-radius: 5px; margin-bottom: 8px; border-left: 4px solid #1abc9c; }
+
+/* ==== ★ 成長グラフ ==== */
+.chart-metric-tabs { display: flex; gap: 4px; margin-bottom: 8px; }
+.chart-tab {
+  flex: 1; padding: 5px 2px; font-size: 0.72em; font-weight: bold; cursor: pointer;
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15);
+  color: #95a5a6; border-radius: 5px; touch-action: manipulation;
+}
+.chart-tab.active { background: rgba(26,188,156,0.2); border-color: #1abc9c; color: #1abc9c; }
+#growth-chart { background: rgba(0,0,0,0.2); border-radius: 8px; padding: 6px; }
+.growth-chart-svg { width: 100%; height: 110px; display: block; }
+.chart-axis-note { font-size: 0.62em; color: #7f8c8d; text-align: center; margin-top: 2px; }
+.chart-empty { font-size: 0.75em; color: #7f8c8d; text-align: center; padding: 28px 4px; line-height: 1.6; }
+#growth-chart-summary { margin-top: 6px; }
+.chart-summary-row { display: flex; justify-content: space-between; font-size: 0.8em; font-weight: bold; }
+.chart-summary-sub { font-size: 0.7em; color: #95a5a6; margin-top: 2px; }
 
 #main-game-board { flex: 2.5; min-width: 300px; background: rgba(0,0,0,0.3); padding: 20px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); box-sizing: border-box; backdrop-filter: blur(5px); }
 
@@ -100,38 +121,13 @@ select.game-setting { padding: 8px; font-size: 0.9em; border-radius: 5px; border
   .key.black-key { width: 74%; height: 70px; max-width: 40px; font-size: 0.68em; }
 }
 
-/* ==== ★ ゲームプレイ中のスマホ横画面レイアウト最適化 ==== */
-@media screen and (max-width: 900px) and (orientation: landscape) {
-  body { padding: 4px 8px; }
-  #app-container { flex-direction: row; flex-wrap: nowrap; align-items: flex-start; gap: 0; }
-  /* ★ 横画面では鍵盤に全幅を使いたいので、ランキング/苦手な音サイドバーは非表示にする */
-  #history-sidebar, #analytics-sidebar { display: none; }
-  #main-game-board { flex: 1; width: 100%; padding: 6px 10px; min-width: 0; }
-  .start-title { font-size: 1.3em; }
-  .start-subtitle { font-size: 0.8em; margin-bottom: 10px; }
-  .quick-rules { padding: 8px 10px; font-size: 0.78em; gap: 4px; margin-bottom: 8px; }
-  .stage-select { gap: 6px; margin-bottom: 10px; }
-  .stage-card { padding: 8px; min-width: 100px; }
-  .stage-name { font-size: 1em; }
-  .stage-desc { font-size: 0.72em; }
-  .stats-bar, .sub-stats-bar { font-size: 0.8em; margin-bottom: 4px; }
-  /* ★ サイドバーを隠す代わりに、コンボ数をゲーム画面内に表示する */
-  #combo-inline-stat { display: inline-flex !important; }
-  /* ★ メッセージの行数が変わっても鍵盤がズレないよう、十分な高さを確保する */
-  #game-message-area { font-size: 0.9em; min-height: 58px; padding-top: 6px; margin-top: 6px; }
-  .keys { margin-top: 6px; }
-  /* ★ 開放音数/判定端末バッジを非表示にした分、鍵盤を大きく表示する */
-  .key { height: 118px; padding-bottom: 6px; font-size: 0.8em; }
-  .key.black-key { height: 74px; width: 92%; max-width: 56px; }
-  button.action-btn { padding: 10px 20px; font-size: 1em; }
-}
 
 /* ★ プレイ中のコンボ表示（インライン版）。通常時は非表示で、横画面モバイル時のみ表示される */
 #combo-inline-stat {
   display: none; align-items: center; gap: 4px; font-weight: bold; color: #f1c40f;
 }
 
-#game-message-area { margin-top: 15px; font-size: 1.1em; font-weight: bold; min-height: 74px; line-height: 1.4; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px; }
+#game-message-area { margin-top: 15px; font-size: 1.1em; font-weight: bold; min-height: 46px; line-height: 1.4; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px; }
 button.action-btn { padding: 15px 30px; font-size: 1.2em; background-color: #e74c3c; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; box-shadow: 0 4px #c0392b; touch-action: manipulation; margin-bottom: 10px; }
 .flash-green { background-color: #27ae60 !important; }
 .flash-red { background-color: #c0392b !important; }
@@ -267,6 +263,38 @@ button.action-btn { padding: 15px 30px; font-size: 1.2em; background-color: #e74
 }
 #bgm-toggle-btn.bgm-off { border-color: #7f8c8d; color: #7f8c8d; background: rgba(127,140,141,0.1); }
 
+/* ==== ★ 苦手音 集中特訓モードのトグル ==== */
+#focus-weak-toggle-btn {
+  background: rgba(127,140,141,0.1); border: 1px solid #7f8c8d; color: #7f8c8d;
+  padding: 7px 14px; border-radius: 20px; font-size: 0.85em; font-weight: bold;
+  cursor: pointer; margin: 0 auto 16px 8px; display: inline-block; touch-action: manipulation;
+}
+#focus-weak-toggle-btn.focus-on {
+  border-color: #e74c3c; color: #e74c3c; background: rgba(231,76,60,0.15);
+  box-shadow: 0 0 10px rgba(231,76,60,0.3);
+}
+
+/* ==== ★ リザルト表示（今回の弱点サマリー・操作ボタン）==== */
+.result-score-line { font-size: 1.25em; font-weight: bold; margin-bottom: 4px; }
+/* 操作ボタンはリザルト上部に横並びで置き、狭い画面でも必ず押せるようにする */
+.result-actions { display: flex; gap: 8px; justify-content: center; align-items: center; flex-wrap: wrap; margin: 4px 0 8px 0; }
+.result-actions .action-btn { margin-bottom: 0; }
+.result-actions .link-btn { margin-bottom: 0; }
+
+.session-weak-box {
+  background: rgba(231, 76, 60, 0.12); border: 1px solid rgba(231, 76, 60, 0.4);
+  border-radius: 8px; padding: 8px 10px; margin: 8px auto; max-width: 420px;
+}
+.session-weak-box.session-weak-perfect {
+  background: rgba(46, 204, 113, 0.12); border-color: rgba(46, 204, 113, 0.5);
+  color: #2ecc71; font-size: 0.85em; font-weight: bold;
+}
+.session-weak-title { font-size: 0.78em; color: #e74c3c; font-weight: bold; margin-bottom: 5px; }
+.session-weak-items { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.session-weak-item {
+  font-size: 0.85em; background: rgba(0,0,0,0.25); border-radius: 5px; padding: 3px 8px;
+}
+
 /* ==== ★ キー割り当てカスタマイズUI ==== */
 .keybind-row {
   display: flex; justify-content: space-between; align-items: center;
@@ -303,4 +331,67 @@ button.action-btn { padding: 15px 30px; font-size: 1.2em; background-color: #e74
 }
 @media screen and (max-width: 768px) and (orientation: portrait) {
   #portrait-hint { display: block; }
+}
+
+/* ==== ★ ゲームプレイ中のスマホ横画面レイアウト最適化 ==== */
+@media screen and (max-width: 900px) and (orientation: landscape) {
+  body { padding: 4px 8px; }
+  #app-container { flex-direction: row; flex-wrap: nowrap; align-items: flex-start; gap: 0; }
+  /* ★ 横画面では鍵盤に全幅を使いたいので、ランキング/苦手な音サイドバーは非表示にする */
+  #history-sidebar, #analytics-sidebar { display: none; }
+  #main-game-board { flex: 1; width: 100%; padding: 6px 10px; min-width: 0; }
+  .start-title { font-size: 1.3em; }
+  .start-subtitle { font-size: 0.8em; margin-bottom: 10px; }
+  .quick-rules { padding: 8px 10px; font-size: 0.78em; gap: 4px; margin-bottom: 8px; }
+  .stage-select { gap: 6px; margin-bottom: 10px; }
+  .stage-card { padding: 8px; min-width: 100px; }
+  .stage-name { font-size: 1em; }
+  .stage-desc { font-size: 0.72em; }
+  .stats-bar, .sub-stats-bar { font-size: 0.8em; margin-bottom: 4px; }
+  /* ★ サイドバーを隠す代わりに、コンボ数をゲーム画面内に表示する */
+  #combo-inline-stat { display: inline-flex !important; }
+  /* ★ 正誤メッセージは音と光で伝わるため1行に簡略化済み。その分ここも詰める */
+  #game-message-area { font-size: 0.9em; min-height: 30px; padding-top: 4px; margin-top: 4px; border-top: none; }
+  /* ★ リザルト表示で内容が増えても鍵盤が画面外へ押し出されないよう、高さを制限してスクロールさせる。
+        操作ボタンはリザルト上部にあるので、スクロールせずに「もう一度プレイ」を押せる。 */
+  #game-message-area { max-height: 40vh; overflow-y: auto; }
+  .result-score-line { font-size: 1em; }
+  .rank-display { font-size: 1em; margin: 4px 0; padding: 5px; }
+  .result-actions .action-btn { padding: 8px 16px; font-size: 0.92em; }
+  .session-weak-box { padding: 5px 8px; margin: 5px auto; }
+  .session-weak-title { font-size: 0.72em; margin-bottom: 3px; }
+  .session-weak-item { font-size: 0.78em; padding: 2px 6px; }
+  .keys { margin-top: 4px; }
+  /* ★ 開放音数/判定端末バッジを非表示にした分、鍵盤を大きく表示する */
+  .key { height: 128px; padding-bottom: 6px; font-size: 0.8em; }
+  .key.black-key { height: 80px; width: 92%; max-width: 56px; }
+  button.action-btn { padding: 10px 20px; font-size: 1em; }
+}
+
+
+/* ==== ★ PC（デスクトップ）専用のレイアウト最適化 ====
+   従来はmax-width:1100px・鍵盤150px固定で、広い画面では左右も下も大きく余っていたため、
+   横幅を広げ、サイドバーを固定幅にして余った分をすべて鍵盤（メインボード）に回す。 */
+@media screen and (min-width: 901px) {
+  #app-container { max-width: 1560px; align-items: flex-start; gap: 18px; }
+  /* サイドバーは固定幅にして、残りの横幅をすべてゲームボードへ */
+  #history-sidebar, #analytics-sidebar { flex: 0 0 270px; min-width: 270px; }
+  #history-sidebar { max-height: 78vh; }
+  #main-game-board { flex: 1; min-width: 0; padding: 26px; }
+
+  /* 余った縦・横スペースを使って鍵盤を大きく表示する */
+  .key-group { max-width: 74px; }
+  .key { height: 230px; font-size: 1em; padding-bottom: 14px; }
+  .key small { font-size: 0.62em; }
+  .key.black-key { height: 62%; max-width: 52px; font-size: 0.66em; padding-bottom: 8px; }
+
+  /* 余白が広いので主要な数値を見やすく */
+  .stats-bar { font-size: 1.35em; padding: 14px; }
+  .sub-stats-bar { font-size: 1em; }
+  #combo-count-large { font-size: 4.2em; }
+
+  /* 練習用ピアノもPCでは大きく */
+  #practice-keys-container .key-group { width: 62px; max-width: 62px; }
+  #practice-keys-container .key { height: 210px; }
+  #practice-keys-container .key.black-key { height: 128px; max-width: 46px; }
 }
