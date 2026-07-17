@@ -159,9 +159,32 @@ function updateBgmToggleUI() {
   btn.classList.toggle('bgm-off', !bgmEnabled);
 }
 
+// ==== ★ バックグラウンド移行時のBGM停止（バグ修正）====
+// スマホでタブを閉じたり他アプリへ切り替えたり画面をロックしたりしても
+// <audio>の再生が続き、BGMが鳴り止まない問題への対策。
+// 画面が隠れたら必ずpauseし、復帰時は「隠れる直前に再生中だった場合」だけ再開する
+// （ユーザーがOFFにしている場合に勝手に鳴り出さないようにするため）。
+// ※ゲーム中はmuted再生で音声セッションを維持しているため、復帰時もそのまま再開してよい
+//   （mutedの状態はpause/playをまたいで保持される）。
+let bgmWasPlayingBeforeHidden = false;
+function pauseBgmForBackground() {
+  bgmWasPlayingBeforeHidden = !bgmAudio.paused;
+  bgmAudio.pause();
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    pauseBgmForBackground();
+  } else if (bgmWasPlayingBeforeHidden) {
+    bgmAudio.play().catch(() => {});
+  }
+});
+// ★ iOS Safariはタブを閉じる際にvisibilitychangeが発火しないことがあるため、pagehideでも止める
+window.addEventListener('pagehide', pauseBgmForBackground);
+
 // ==== ★ 苦手音 集中特訓モードのトグル ====
-// ONにすると、そのステージで苦手な音（ステージ3は音程）に絞って出題される。
-// スコア計算・ランキング条件は通常と同じ（苦手な音に絞る＝難しくなるため、有利にはならない）。
+// ONにすると、そのステージで苦手な音に絞って出題される。
+// スコア計算は通常と同じだが、自己ベスト更新・ランキング送信の対象外（endGame側で制御）。
+// （特訓スコアでベストが埋まると、以後の通常プレイでランキング送信の機会が失われるため）
 function toggleFocusWeakMode() {
   focusWeakMode = !focusWeakMode;
   localStorage.setItem('saxEarTrainFocusWeakMode', String(focusWeakMode));
@@ -227,6 +250,18 @@ function handleNotationChange() {
   updateAnalyticsUI();
 }
 
+// ==== ★ 楽器（管）設定の永続化 ====
+// 変更のたびに保存し、次回起動時に復元する（initApp側）。
+// 初めて開いた人はHTMLのデフォルト（C管）のまま、2回目以降は前回プレイした管が選ばれる。
+function handleInstrumentChange() {
+  const v = document.getElementById('instrument-select').value;
+  localStorage.setItem('saxEarTrainInstrument', v);
+  // ★ 練習用ピアノの管も同期させる（本編と別の管で音確認して混乱するのを防ぐ）
+  const practiceSel = document.getElementById('practice-instrument-select');
+  if (practiceSel) practiceSel.value = v;
+  updateGameStatusLine();
+}
+
 function updateNoteLabels() {
   allNoteKeys.forEach(note => {
     const el = document.getElementById('notelabel-' + note);
@@ -248,14 +283,14 @@ let currentAvailableNotes = [];
 
 // ==== ★ 苦手な音の統計はステージごとに別々に管理する ====
 let noteStatsByStage = JSON.parse(localStorage.getItem('saxEarTrainStatsByStage')) || {};
-[1, 2, 3].forEach(stageNum => {
+[1, 2, 3, 4].forEach(stageNum => {
   if (!noteStatsByStage[stageNum]) noteStatsByStage[stageNum] = {};
   allNoteKeys.forEach(k => {
     if (!noteStatsByStage[stageNum][k]) noteStatsByStage[stageNum][k] = { attempts: 0, correct: 0, totalTime: 0 };
   });
 });
 
-// ==== ★ ステージ3専用：苦手な「音程（跳躍）」の統計 ====
+// ==== ★ ステージ4（ランダム基準音）専用：苦手な「音程（跳躍）」の統計 ====
 // 半音差(0〜11)ごとに正答率・反応時間を記録する
 let intervalStats = JSON.parse(localStorage.getItem('saxEarTrainIntervalStats')) || {};
 for (let i = 0; i <= 11; i++) {
@@ -266,8 +301,8 @@ const intervalNames = ['完全1度', '短2度', '長2度', '短3度', '長3度',
 let scoreHistory = JSON.parse(localStorage.getItem('saxEarTrainHistory')) || [];
 
 let currentQuestionNote = ''; let questionStartTime = 0; 
-let currentReferenceNote = 'C'; // ★ ステージ3の音程集計用：直近の基準音
-let currentIntervalClass = 0;   // ★ ステージ3の音程集計用：直近の半音差(0-11)
+let currentReferenceNote = 'C'; // ★ ステージ4の音程集計用：直近の基準音
+let currentIntervalClass = 0;   // ★ ステージ4の音程集計用：直近の半音差(0-11)
 let isPlayingGame = false; let isWaitingForAnswer = false; let isCountingDown = false; 
 let score = 0; let timeLeft = 30; let combo = 0; let maxCombo = 0; let streak = 0; let timerInterval;
 
@@ -275,7 +310,7 @@ let score = 0; let timeLeft = 30; let combo = 0; let maxCombo = 0; let streak = 
 let weakNotesDisplayCount = 3;
 
 // ★ 今回のプレイ中に間違えた音／音程を記録する（リザルトの「今回の弱点」表示用）
-//   ステージ1・2は音名ごと、ステージ3は音程（跳躍）ごとに集計する
+//   ステージ1〜3は音名ごと、ステージ4は音程（跳躍）ごとに集計する
 let sessionMistakes = {};
 
 // ★ 今回のプレイ全体の集計（成長グラフ用に平均反応時間・正答率を履歴へ残す）
@@ -289,14 +324,18 @@ let focusWeakMode = (localStorage.getItem('saxEarTrainFocusWeakMode') === 'true'
 // ==== ★ ステージ管理 ====
 let currentStage = 1;
 // ★ 解放条件は「直前のステージでの自己ベスト」で判定する
-//   STAGE2: STAGE1で70,000点 / STAGE3: STAGE2で200,000点
-const STAGE_UNLOCK_SCORES = { 2: 70000, 3: 200000 };
-const stage3ReferencePool = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
+//   STAGE2: STAGE1で70,000点 / STAGE3: STAGE2で150,000点 / STAGE4: STAGE3で220,000点
+const STAGE_UNLOCK_SCORES = { 2: 70000, 3: 150000, 4: 220000 };
+// ★ STAGE4（ランダム基準音）で基準音として使う音のプール
+const stage4ReferencePool = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
+// ★ STAGE3（固定基準音・下行あり）で使う2種類の基準音。
+//   「ド」の時はドから上の音、「オクターブ上のド」の時はそこから下の音を出題する。
+const stage3ReferencePair = ['C', 'HighC'];
 
 // ★ ステージ別スコア補正倍率：ステージが上がるほど純粋に難しくなり得点が伸びにくくなるため、
 //   同程度の実力ならステージ1に近いスコアが出るように底上げする。
 //   ただしステージ1の記録が簡単に抜かれないよう、完全に同等にはせず控えめに設定している。
-const STAGE_SCORE_MULTIPLIERS = { 1: 1.0, 2: 1.8, 3: 2.8 };
+const STAGE_SCORE_MULTIPLIERS = { 1: 1.0, 2: 1.8, 3: 2.0, 4: 2.8 };
 
 // ★ ベストスコアはステージごとに別々に保持する（解放条件の判定に使うため）
 function loadBestScoreByStage() {
@@ -309,15 +348,42 @@ function loadBestScoreByStage() {
   // 旧バージョン（全ステージ共通の単一ベストスコア）からの移行措置：
   // 旧データはSTAGE1の記録とみなして引き継ぐ
   const legacyBest = parseInt(localStorage.getItem('saxEarTrainBestScore') || '0', 10);
-  const result = { 1: data[1] || 0, 2: data[2] || 0, 3: data[3] || 0 };
+  const result = { 1: data[1] || 0, 2: data[2] || 0, 3: data[3] || 0, 4: data[4] || 0 };
   if (legacyBest > result[1]) result[1] = legacyBest;
   return result;
 }
 let bestScoreByStage = loadBestScoreByStage();
 
+// ==== ★ 4ステージ制へのデータ移行（一度だけ実行）====
+// 旧バージョンのSTAGE3（ランダム基準音）は、新構成では「STAGE4」に相当する。
+// 既存プレイヤーの旧STAGE3データ（苦手統計・ベストスコア・プレイ履歴）を3→4へ付け替え、
+// 新STAGE3（固定基準音・下行あり）はまっさらな状態から始める。
+// ※intervalStats（音程統計）は旧STAGE3＝新STAGE4のものなので、そのまま引き継ぐ。
+(function migrateToStage4Layout() {
+  if (localStorage.getItem('saxEarTrainStage4Migrated') === 'true') return;
+  localStorage.setItem('saxEarTrainStage4Migrated', 'true');
+
+  // 1. 苦手な音の統計：旧STAGE3 → STAGE4へ移し、STAGE3は空で作り直す
+  noteStatsByStage[4] = noteStatsByStage[3];
+  noteStatsByStage[3] = {};
+  allNoteKeys.forEach(k => { noteStatsByStage[3][k] = { attempts: 0, correct: 0, totalTime: 0 }; });
+  localStorage.setItem('saxEarTrainStatsByStage', JSON.stringify(noteStatsByStage));
+
+  // 2. ベストスコア：旧STAGE3 → STAGE4（新STAGE3は0から）
+  //   ※この結果、旧STAGE3を解放済みだったプレイヤーも、新STAGE3で220,000点を
+  //     出すまでSTAGE4は再ロックされる（挿入されたステージを順番に踏む仕様）
+  bestScoreByStage[4] = bestScoreByStage[3] || 0;
+  bestScoreByStage[3] = 0;
+  localStorage.setItem('saxEarTrainBestScoreByStage', JSON.stringify(bestScoreByStage));
+
+  // 3. プレイ履歴：stage:3 の記録を stage:4 に付け替える（成長グラフの連続性を保つ）
+  scoreHistory.forEach(h => { if ((h.stage || 1) === 3) h.stage = 4; });
+  localStorage.setItem('saxEarTrainHistory', JSON.stringify(scoreHistory));
+})();
+
 // ★ 全ステージ通しての自己ベスト（ゲーム画面の表示用）
 function getOverallBestScore() {
-  return Math.max(bestScoreByStage[1], bestScoreByStage[2], bestScoreByStage[3]);
+  return Math.max(bestScoreByStage[1], bestScoreByStage[2], bestScoreByStage[3], bestScoreByStage[4] || 0);
 }
 
 // ==== ★ 外部送信（GAS/Discord）設定 ====
@@ -473,7 +539,8 @@ function updateBackgroundByCombo(comboCount) {
 
 function updateDifficulty() {
   const mode = document.getElementById('keyboard-mode-select').value;
-  const includeChromatic = (currentStage === 2 || currentStage === 3);
+  // ★ STAGE2以降（2・3・4）はすべて黒鍵（半音・クロマチック）を含む
+  const includeChromatic = (currentStage >= 2);
 
   const whiteKeyGroup = (mode === 'pc') ? diatonicSequencePC : diatonicSequenceMobile;
   activeNoteSequence = includeChromatic
@@ -512,23 +579,22 @@ function getEffectiveAvailableNotes() {
 function updateKeyboardUI() { updateDifficulty(); }
 
 // ==== ★ スタート画面 / ステージ選択 / モーダル 制御 ====
-// ★ STAGE2はSTAGE1で、STAGE3はSTAGE2で、それぞれ規定スコアを出すと解放される
+// ★ 各ステージは「直前のステージで規定スコア」を出すと解放される
+//   （STAGE2: STAGE1で70,000点 / STAGE3: STAGE2で150,000点 / STAGE4: STAGE3で220,000点）
 function isStageUnlocked(stageNum) {
   if (stageNum === 1) return true;
   return bestScoreByStage[stageNum - 1] >= STAGE_UNLOCK_SCORES[stageNum];
 }
 
 function renderStageLockState() {
-  const stage2Unlocked = isStageUnlocked(2);
-  const stage3Unlocked = isStageUnlocked(3);
+  [2, 3, 4].forEach(stageNum => {
+    const unlocked = isStageUnlocked(stageNum);
+    document.getElementById(`stage-${stageNum}-card`).classList.toggle('locked', !unlocked);
+    document.getElementById(`stage-${stageNum}-lock-label`).style.display = unlocked ? 'none' : 'inline-block';
+  });
 
-  document.getElementById('stage-2-card').classList.toggle('locked', !stage2Unlocked);
-  document.getElementById('stage-2-lock-label').style.display = stage2Unlocked ? 'none' : 'inline-block';
-
-  document.getElementById('stage-3-card').classList.toggle('locked', !stage3Unlocked);
-  document.getElementById('stage-3-lock-label').style.display = stage3Unlocked ? 'none' : 'inline-block';
-
-  if ((currentStage === 2 && !stage2Unlocked) || (currentStage === 3 && !stage3Unlocked)) {
+  // ★ 選択中のステージがロックされている場合（データ移行直後など）はSTAGE1へ戻す
+  if (currentStage > 1 && !isStageUnlocked(currentStage)) {
     selectStage(1);
   }
 }
@@ -536,9 +602,9 @@ function renderStageLockState() {
 function selectStage(stageNum) {
   if (!isStageUnlocked(stageNum)) return; // ロック中は無視
   currentStage = stageNum;
-  document.getElementById('stage-1-card').classList.toggle('selected', stageNum === 1);
-  document.getElementById('stage-2-card').classList.toggle('selected', stageNum === 2);
-  document.getElementById('stage-3-card').classList.toggle('selected', stageNum === 3);
+  [1, 2, 3, 4].forEach(n => {
+    document.getElementById(`stage-${n}-card`).classList.toggle('selected', stageNum === n);
+  });
   weakNotesDisplayCount = 3; // ★ ステージ切替時はランキング表示件数をリセット
   updateAnalyticsUI(); // ★ ステージごとに異なるランキングをすぐ反映
   updateGameStatusLine(); // ★ 解放進捗の表示も選択中ステージに合わせて更新
@@ -559,10 +625,10 @@ function updateGameStatusLine() {
   if (progressEl) {
     const stageBest = bestScoreByStage[currentStage] || 0;
     const nextStage = currentStage + 1;
-    if (nextStage <= 3 && !isStageUnlocked(nextStage)) {
+    if (nextStage <= 4 && !isStageUnlocked(nextStage)) {
       const remain = STAGE_UNLOCK_SCORES[nextStage] - stageBest;
       progressEl.innerText = `🏁 STAGE${currentStage}ベスト: ${stageBest}点（あと${remain}点でSTAGE${nextStage}解放）`;
-    } else if (nextStage > 3) {
+    } else if (nextStage > 4) {
       progressEl.innerText = `🏁 STAGE${currentStage}ベスト: ${stageBest}点（最終ステージ）`;
     } else {
       progressEl.innerText = `🏁 STAGE${currentStage}ベスト: ${stageBest}点（STAGE${nextStage}解放済み）`;
@@ -800,10 +866,13 @@ function startGameLoop() {
 
 let recentQuestionNotes = [];
 
-function getNextNoteByWeight() {
+function getNextNoteByWeight(poolOverride) {
+  // ★ STAGE3の出題方向の絞り込みなど、呼び出し側で出題候補プールを差し替えられるようにする。
+  //   省略時は従来通り currentAvailableNotes（開放中の音すべて）から選ぶ。
+  const notesPool = (poolOverride && poolOverride.length > 0) ? poolOverride : currentAvailableNotes;
   const statsForStage = noteStatsByStage[currentStage];
   let totalWeight = 0; let weights = {};
-  currentAvailableNotes.forEach(note => {
+  notesPool.forEach(note => {
     let stat = statsForStage[note]; let weight = 1.0; 
     if (stat.attempts > 0) {
       weight += (1 - (stat.correct / stat.attempts)) * 2.0;
@@ -814,9 +883,9 @@ function getNextNoteByWeight() {
 
   // ★ 苦手音 集中特訓モード：出題対象を「苦手な音」の上位半分だけに絞り込む
   //   （正答率が低い順→同率なら反応が遅い順。データ未計測の音は中間の扱いにする）
-  let basePool = currentAvailableNotes;
+  let basePool = notesPool;
   if (focusWeakMode) {
-    const ranked = currentAvailableNotes.map(note => {
+    const ranked = notesPool.map(note => {
       const stat = statsForStage[note];
       const rawAccuracy = stat.attempts > 0 ? (stat.correct / stat.attempts) : 0.5;
       const avgTime = stat.correct > 0 ? (stat.totalTime / stat.correct) : 1200;
@@ -861,17 +930,23 @@ function nextQuestion() {
   if (!isPlayingGame) return;
   isWaitingForAnswer = false;
 
-  const referenceNoteName = (currentStage === 3)
-    ? stage3ReferencePool[Math.floor(Math.random() * stage3ReferencePool.length)]
-    : 'C';
+  // ★ ステージごとの基準音：
+  //   STAGE1・2 → 常に「ド」
+  //   STAGE3    → 「ド」か「オクターブ上のド」の2択（下行音程の練習用）
+  //   STAGE4    → 12音から完全ランダム
+  let referenceNoteName = 'C';
+  if (currentStage === 4) {
+    referenceNoteName = stage4ReferencePool[Math.floor(Math.random() * stage4ReferencePool.length)];
+  } else if (currentStage === 3) {
+    referenceNoteName = stage3ReferencePair[Math.floor(Math.random() * stage3ReferencePair.length)];
+  }
   currentReferenceNote = referenceNoteName;
   const referenceFreq = getFrequency(referenceNoteName);
 
-  document.getElementById('game-message-area').innerHTML = (currentStage === 3)
-    ? `🎵 基準音(${noteNames[referenceNoteName]}) ➡ 問題音...`
-    : `🎵 基準音(${noteNames['C']}) ➡ 問題音...`;
+  document.getElementById('game-message-area').innerHTML = `🎵 基準音(${noteNames[referenceNoteName]}) ➡ 問題音...`;
 
-  if (currentStage === 3) {
+  // ★ STAGE3・4は基準音が一定でないため、どの音が鳴ったか鍵盤の黄色ハイライトでも伝える
+  if (currentStage >= 3) {
     const referenceBtn = document.getElementById('note-' + referenceNoteName);
     if (referenceBtn) {
       referenceBtn.classList.add('reference-highlight');
@@ -882,10 +957,22 @@ function nextQuestion() {
   playSaxTone(referenceFreq, 0.4);
   setTimeout(() => {
     if (!isPlayingGame) return;
-    currentQuestionNote = getNextNoteByWeight(); 
 
-    // ★ ステージ3のみ：基準音からの半音差（0〜11）を「音程」として記録しておく
+    // ★ STAGE3では出題方向を基準音に合わせて絞る：
+    //   基準が「ド」なら上（ド以上）、「オクターブ上のド」なら下（上のド以下）の音のみ。
+    //   （スマホ拡張レンジの序盤は開放音が低音側に偏っておりプールが偏る/空になり得るため、
+    //     空になった場合は開放中の全音にフォールバックする）
+    let questionPool = null;
     if (currentStage === 3) {
+      questionPool = (currentReferenceNote === 'HighC')
+        ? currentAvailableNotes.filter(n => semitoneOffsets[n] <= semitoneOffsets['HighC'])
+        : currentAvailableNotes.filter(n => semitoneOffsets[n] >= semitoneOffsets['C']);
+      if (questionPool.length === 0) questionPool = currentAvailableNotes;
+    }
+    currentQuestionNote = getNextNoteByWeight(questionPool);
+
+    // ★ STAGE4のみ：基準音からの半音差（0〜11）を「音程」として記録しておく
+    if (currentStage === 4) {
       const diff = semitoneOffsets[currentQuestionNote] - semitoneOffsets[currentReferenceNote];
       currentIntervalClass = ((diff % 12) + 12) % 12;
     }
@@ -917,7 +1004,7 @@ function checkAnswer(answerNote) {
 
   // ★ 実際に回答されたので、ここで初めて出題回数(attempts)を加算する
   statsForStage[currentQuestionNote].attempts++;
-  if (currentStage === 3) intervalStats[currentIntervalClass].attempts++;
+  if (currentStage === 4) intervalStats[currentIntervalClass].attempts++;
 
   // ★ 成長グラフ用に、今回のプレイ全体の集計も取る
   sessionAnsweredCount++;
@@ -929,7 +1016,7 @@ function checkAnswer(answerNote) {
     statsForStage[currentQuestionNote].correct++;
     statsForStage[currentQuestionNote].totalTime += responseTime;
 
-    if (currentStage === 3) {
+    if (currentStage === 4) {
       intervalStats[currentIntervalClass].correct++;
       intervalStats[currentIntervalClass].totalTime += responseTime;
     }
@@ -983,8 +1070,8 @@ function checkAnswer(answerNote) {
   } else {
     streak = 0; combo = 0;
 
-    // ★ 今回のプレイの弱点として記録する（ステージ3は音程、それ以外は音名で集計）
-    const mistakeKey = (currentStage === 3) ? ('interval:' + currentIntervalClass) : currentQuestionNote;
+    // ★ 今回のプレイの弱点として記録する（ステージ4は音程、それ以外は音名で集計）
+    const mistakeKey = (currentStage === 4) ? ('interval:' + currentIntervalClass) : currentQuestionNote;
     sessionMistakes[mistakeKey] = (sessionMistakes[mistakeKey] || 0) + 1;
 
     currentNoteCount = Math.max(4, currentNoteCount - 1);
@@ -1050,8 +1137,8 @@ function updateAnalyticsUI() {
   const moreBtn = document.getElementById('weak-notes-more-btn');
   if (!listEl) return;
 
-  if (currentStage === 3) {
-    // ★ ステージ3は「苦手な音程（跳躍）」のランキングを表示する
+  if (currentStage === 4) {
+    // ★ ステージ4（ランダム基準音）は「苦手な音程（跳躍）」のランキングを表示する
     if (titleEl) titleEl.innerText = '🚨 苦手な音程（跳躍）';
 
     let displayData = [];
@@ -1080,7 +1167,7 @@ function updateAnalyticsUI() {
     return;
   }
 
-  // ★ ステージ1・2は通常の「苦手な音」ランキング（ステージごとに別集計）
+  // ★ ステージ1〜3は通常の「苦手な音」ランキング（ステージごとに別集計）
   if (titleEl) titleEl.innerText = `🚨 STAGE${currentStage} 苦手な音`;
   const statsForStage = noteStatsByStage[currentStage];
   let displayData = [];
@@ -1248,7 +1335,7 @@ function buildSessionWeaknessHTML() {
     return noteNames[key] || key;
   };
 
-  const title = (currentStage === 3) ? '今回ミスした音程' : '今回ミスした音';
+  const title = (currentStage === 4) ? '今回ミスした音程' : '今回ミスした音';
   let html = `<div class="session-weak-box"><div class="session-weak-title">📝 ${title}</div><div class="session-weak-items">`;
   entries.forEach(e => {
     html += `<span class="session-weak-item"><strong>${label(e.key)}</strong> ×${e.count}</span>`;
@@ -1292,10 +1379,13 @@ function endGame() {
   updateHistoryUI(); 
   renderGrowthChart(); // ★ グラフも最新の記録で更新
   
-  // ★ ベストスコアは「プレイしたステージ」の記録として更新する
-  const wasStage2Unlocked = isStageUnlocked(2);
-  const wasStage3Unlocked = isStageUnlocked(3);
-  const isNewBest = score > (bestScoreByStage[currentStage] || 0);
+  // ★ ベストスコアは「プレイしたステージ」の記録として更新する。
+  //   ただし🎯苦手特訓モード中のプレイは、自己ベスト更新・ランキング送信の対象外とする。
+  //   （特訓は出題が苦手な音に偏る特殊条件なので通常記録と混ぜない。また、特訓スコアで
+  //     ベストが埋まると以後の通常プレイでランキング送信の機会が失われてしまうため。
+  //     履歴・統計・成長グラフには通常通り記録される）
+  const wasUnlocked = { 2: isStageUnlocked(2), 3: isStageUnlocked(3), 4: isStageUnlocked(4) };
+  const isNewBest = !focusWeakMode && score > (bestScoreByStage[currentStage] || 0);
   if (isNewBest) {
     bestScoreByStage[currentStage] = score;
     localStorage.setItem('saxEarTrainBestScoreByStage', JSON.stringify(bestScoreByStage));
@@ -1303,17 +1393,19 @@ function endGame() {
   renderStageLockState();
   updateGameStatusLine();
   
-  const stage2JustUnlocked = !wasStage2Unlocked && isStageUnlocked(2);
-  const stage3JustUnlocked = !wasStage3Unlocked && isStageUnlocked(3);
+  const justUnlockedStages = [2, 3, 4].filter(n => !wasUnlocked[n] && isStageUnlocked(n));
   
+  // ★ 称号のしきい値はステージ解放ライン（70,000 / 150,000 / 220,000）と揃えている。
+  //   後段のステージにはスコア補正倍率（x1.8〜x2.8）がかかるため、上位称号ほど間隔を広げ、
+  //   最高位「神の耳」はSTAGE1（倍率x1.0）では事実上到達不能な1,000,000点に設定。
   let rankName = ""; let rankColor = ""; let rankDesc = "";
   if (score < 10000) { rankName = "🥉 ビギナー"; rankColor = "#cd7f32"; rankDesc = "近い音程の距離感が掴めてきたレベル"; }
-  else if (score < 25000) { rankName = "🥈 レギュラー"; rankColor = "#bdc3c7"; rankDesc = "1オクターブ内の跳躍に迷いがなくなってきたレベル"; }
-  else if (score < 40000) { rankName = "🏅 ベテラン"; rankColor = "#3498db"; rankDesc = "拡張レンジでの跳躍にも素早く反応できる、瞬時の判断力が身についてきた証！"; }
-  else if (score < 50000) { rankName = "🥇 エキスパート"; rankColor = "#f1c40f"; rankDesc = "基準のドに対する相対音感が強固になり、ほぼノータイムで音が取れるレベル"; }
-  else if (score < 100000) { rankName = "👑 マスター"; rankColor = "#e67e22"; rankDesc = "考えなくても指が動く、完璧な相対音感と反射神経の持ち主"; }
-  else if (score < 150000) { rankName = "🏆 グランドマスター"; rankColor = "#8e44ad"; rankDesc = "ステージ3の惑わせにも動じない、名手と呼ぶにふさわしい領域"; }
-  else { rankName = "✨ 神の耳"; rankColor = "#ff4500"; rankDesc = "システムと完全に同化。限界スピードでの連続正解を維持できる究極の耳！"; }
+  else if (score < 30000) { rankName = "🥈 レギュラー"; rankColor = "#bdc3c7"; rankDesc = "1オクターブ内の跳躍に迷いがなくなってきたレベル"; }
+  else if (score < 70000) { rankName = "🏅 ベテラン"; rankColor = "#3498db"; rankDesc = "拡張レンジでの跳躍にも素早く反応できる、瞬時の判断力が身についてきた証！"; }
+  else if (score < 150000) { rankName = "🥇 エキスパート"; rankColor = "#f1c40f"; rankDesc = "STAGE2解放ライン(70,000点)を突破。相対音感がほぼノータイムの領域に"; }
+  else if (score < 220000) { rankName = "👑 マスター"; rankColor = "#e67e22"; rankDesc = "STAGE3解放ライン(150,000点)を突破。考えなくても指が動く境地"; }
+  else if (score < 1000000) { rankName = "🏆 グランドマスター"; rankColor = "#8e44ad"; rankDesc = "STAGE4解放ライン(220,000点)を突破。名手と呼ぶにふさわしい領域"; }
+  else { rankName = "✨ 神の耳"; rankColor = "#ff4500"; rankDesc = "1,000,000点の壁を超えた者だけが到達できる、限界スピードを維持する究極の耳！"; }
   
   let endMsg = `<div class="result-score-line">🏁 ${score}点 <span style="font-size:0.75em; color:#bdc3c7;">(最大コンボ: ${finalCombo})</span></div>`;
   endMsg += `<div class="rank-display" style="color:${rankColor};">${rankName}<br><span style="font-size:0.55em; font-weight:normal; color:#ecf0f1;">${rankDesc}</span></div>`;
@@ -1326,8 +1418,9 @@ function endGame() {
   endMsg += `<button class="link-btn" onclick="returnToStartScreen();">🔁 ステージ選択</button>`;
   endMsg += `</div>`;
 
-  if (stage2JustUnlocked) { endMsg += `<div style="color:#2ecc71; font-weight:bold; margin-bottom:6px;">🔓 ステージ2がアンロックされました！</div>`; }
-  if (stage3JustUnlocked) { endMsg += `<div style="color:#2ecc71; font-weight:bold; margin-bottom:6px;">🔓 ステージ3がアンロックされました！</div>`; }
+  justUnlockedStages.forEach(n => {
+    endMsg += `<div style="color:#2ecc71; font-weight:bold; margin-bottom:6px;">🔓 ステージ${n}がアンロックされました！</div>`;
+  });
 
   // ★★★ ランキング送信UIはフルスクリーンモーダルではなく、メッセージエリア内に直接埋め込む。
   //     こうすることで、下の鍵盤（フリープレイ用ピアノ）が隠れず、常に操作できる。 ★★★
@@ -1339,6 +1432,11 @@ function endGame() {
         <button id="submit-score-btn" class="action-btn" onclick="submitScore(${score}, ${finalCombo})" style="width:100%; margin-top:8px;">📤 ランキングにスコアを送信</button>
         <div id="submit-status-msg" class="score-submit-status"></div>
       </div>`;
+  }
+
+  // ★ 苦手特訓モードのプレイは自己ベスト・ランキングの対象外である旨を明示する
+  if (focusWeakMode) {
+    endMsg += `<div style="font-size:0.8em; color:#e74c3c; margin-top:6px;">🎯 苦手特訓モードのため、このスコアは自己ベスト・ランキングの対象外です</div>`;
   }
 
   // ★ 今回のプレイの弱点サマリー
@@ -1757,6 +1855,15 @@ function showMoreRankings() {
 // 途中で実行すると、まだ宣言されていない後方のlet/constを参照して
 // ReferenceError(Temporal Dead Zone)となり、以降の変数が全て初期化されなくなるため。
 function initApp() {
+  // ★ 前回プレイした楽器（管）を復元する。保存が無ければHTMLのデフォルト（C管）のまま。
+  //   不正な値（手動編集や旧データ）はbaseFreqsに存在するキーかどうかで弾く。
+  const savedInstrument = localStorage.getItem('saxEarTrainInstrument');
+  if (savedInstrument && baseFreqs[savedInstrument] !== undefined) {
+    document.getElementById('instrument-select').value = savedInstrument;
+    const practiceSel = document.getElementById('practice-instrument-select');
+    if (practiceSel) practiceSel.value = savedInstrument;
+  }
+
   document.getElementById('notation-select').value = notationMode;
   document.getElementById('semitone-mode-select').value = semitoneInputMode;
   document.getElementById('device-badge').innerText = `判定端末: ${DEVICE_LABELS[deviceType]}`;

@@ -6,7 +6,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=M+PLUS+Rounded+1c:wght@700;900&display=swap" rel="stylesheet">
-<title>Transposing Ear Training - V33</title>
+<title>Transposing Ear Training - V34</title>
 
 <!-- ★ PWA対応：ホーム画面に追加するとブラウザUI無しの全画面アプリとして起動できる -->
 <link rel="manifest" href="manifest.json">
@@ -89,7 +89,7 @@
       <div class="quick-rules">
         <div>🎧 音を聴いて鍵盤を叩く！</div>
         <div>🔥 連続正解でコンボ発生、タイムボーナスも！</div>
-        <div>🏆 STAGE1で70,000点 → STAGE2で200,000点で解放！</div>
+        <div>🏆 70,000点 → 150,000点 → 220,000点で次のステージ解放！</div>
       </div>
  
       <button class="link-btn" onpointerdown="event.preventDefault(); showRulesModal();">📖 詳しいルールを見る (How to play)</button>
@@ -113,14 +113,20 @@
         </div>
         <div class="stage-card locked" id="stage-3-card" onpointerdown="event.preventDefault(); selectStage(3);">
           <div class="stage-badge">STAGE 3</div>
+          <div class="stage-name">固定基準音・下行あり</div>
+          <div class="stage-desc">基準音は「ド」か「オクターブ上のド」。上のドの時は、そこから下の音が出題される。</div>
+          <div class="lock-overlay" id="stage-3-lock-label">🔒 STAGE2で150,000点</div>
+        </div>
+        <div class="stage-card locked" id="stage-4-card" onpointerdown="event.preventDefault(); selectStage(4);">
+          <div class="stage-badge">STAGE 4</div>
           <div class="stage-name">ランダム基準音</div>
           <div class="stage-desc">基準音が毎回ランダム。半音を含む全音域から出題。</div>
-          <div class="lock-overlay" id="stage-3-lock-label">🔒 STAGE2で200,000点</div>
+          <div class="lock-overlay" id="stage-4-lock-label">🔒 STAGE3で220,000点</div>
         </div>
       </div>
  
       <div class="header-section">
-        <select id="instrument-select" class="game-setting">
+        <select id="instrument-select" class="game-setting" onchange="handleInstrumentChange()">
           <option value="C" selected>C管 (ピアノ等)</option>
           <option value="Bb">B♭管 (サックス等)</option>
           <option value="Eb">E♭管 (アルト等)</option>
@@ -161,7 +167,8 @@
  
       <div id="countdown"></div>
       
-      <div id="game-message-area" style="display:flex; flex-direction:column; align-items:center; justify-content:center;">楽器とモードを選んでスタート！</div>
+      <!-- ★ flexレイアウト指定はstyle.cssに移動（メディアクエリでjustify-contentを上書きできるようにするため） -->
+      <div id="game-message-area">楽器とモードを選んでスタート！</div>
  
       <div class="keys">
         <div class="key-group" data-white-note="LowA">
@@ -268,10 +275,11 @@
       ・<strong>ゲーム終了後も鍵盤は鳴らせます。</strong>スコアに影響しないので音の確認に自由に使えます。<br>
       ・<strong>STAGE 1</strong>：基準音は常に「ド」。半音を含まないメジャースケールのみが出題されます。<br>
       ・<strong>STAGE 2</strong>：基準音は常に「ド」のまま、黒鍵（半音・クロマチック）も出題されるようになります。<strong>STAGE1で70,000点</strong>を出すと解放。<br>
-      ・<strong>STAGE 3</strong>：基準音が毎回ランダムになりますが、問題音は常に鳴った音名そのものが正解です（惑わされないように！）。半音を含む全音域が対象。<strong>STAGE2で200,000点</strong>を出すと解放。<br>
-      ・STAGE 2・3は難易度が高い分、<strong>獲得スコアに補正倍率</strong>がかかります（STAGE2: x1.8 / STAGE3: x2.8）。<br>
-      ・STAGE 3では基準音が鳴る際、<strong>対象の鍵盤が黄色く光り</strong>、テキストでも音名をお知らせします。<br>
-      ・「苦手な音」ランキングは<strong>ステージごとに別々に集計</strong>されます。STAGE 3のみ、苦手な音ではなく<strong>苦手な音程（跳躍）</strong>のランキングが表示されます。<br>
+      ・<strong>STAGE 3</strong>：基準音が「ド」または「オクターブ上のド↑」の2種類になります。上のド↑が基準の時は、そこから<strong>下の音</strong>が出題されます（下行音程のトレーニング）。<strong>STAGE2で150,000点</strong>を出すと解放。<br>
+      ・<strong>STAGE 4</strong>：基準音が毎回ランダムになりますが、問題音は常に鳴った音名そのものが正解です（惑わされないように！）。半音を含む全音域が対象。<strong>STAGE3で220,000点</strong>を出すと解放。<br>
+      ・STAGE 2以降は難易度が高い分、<strong>獲得スコアに補正倍率</strong>がかかります（STAGE2: x1.8 / STAGE3: x2.0 / STAGE4: x2.8）。<br>
+      ・STAGE 3・4では基準音が鳴る際、<strong>対象の鍵盤が黄色く光り</strong>、テキストでも音名をお知らせします。<br>
+      ・「苦手な音」ランキングは<strong>ステージごとに別々に集計</strong>されます。STAGE 4のみ、苦手な音ではなく<strong>苦手な音程（跳躍）</strong>のランキングが表示されます。<br>
       ・<strong>PCでの半音入力</strong>：ヘッダーの「半音入力」設定で2つの方式を選べます。<br>
       　－<strong>専用キー(推奨)</strong>：W, E, T, Y, U などが独立した黒鍵として機能します（DAWのピアノ配列風）。<br>
       　－<strong>修飾キー(Space)</strong>：<strong>スペースキーを押しながら</strong>白鍵のキーを押すと、その半音になります（例：Space+Aキー＝Db）。<br>
@@ -282,7 +290,7 @@
       ・スマホは横画面推奨ですが、縦画面のままでもプレイできます。<br>
       ・<strong>自己ベストを更新すると</strong>、ゲーム終了時に名前を入力して部内ランキングにスコアを送信できます（鍵盤はそのまま操作できます）。<br>
       ・ベストスコアは<strong>ステージごとに別々に記録</strong>されます。ランキングへの送信も、そのステージでの自己ベストを更新した時に可能です。<br>
-      ・<strong>🎯 苦手特訓モード</strong>：ONにすると、そのステージであなたが苦手な音（STAGE3は苦手な音程）に絞って出題されます。集中的に弱点を潰したい時にどうぞ。スコア計算やランキングの条件は通常と同じです。<br>
+      ・<strong>🎯 苦手特訓モード</strong>：ONにすると、そのステージであなたが苦手な音に絞って出題されます。集中的に弱点を潰したい時にどうぞ。スコア計算は通常通りですが、<strong>自己ベストの更新とランキング送信の対象外</strong>になります。<br>
       ・プレイ終了後のリザルトに、<strong>今回ミスした音のワースト3</strong>が表示されます。次のプレイの狙いどころにしてください。
     </div>
     <button class="action-btn" onpointerdown="event.preventDefault(); closeRulesModal();" style="width:100%;">閉じる</button>
