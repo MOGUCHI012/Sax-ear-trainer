@@ -148,6 +148,18 @@ select.game-setting { padding: 8px; font-size: 0.9em; border-radius: 5px; border
    横画面のオーバーフロー対策（下記）が効かないため。 */
 #game-message-area { margin-top: 15px; font-size: 1.1em; font-weight: bold; min-height: 46px; line-height: 1.4; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 button.action-btn { padding: 15px 30px; font-size: 1.2em; background-color: #e74c3c; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; box-shadow: 0 4px #c0392b; touch-action: manipulation; margin-bottom: 10px; }
+
+/* ==== ★ 苦手特訓モード ==== */
+/* 特訓開始ボタン：通常スタートと区別できるよう緑系にする */
+#training-btn { background-color: #16a085; box-shadow: 0 4px #117a65; margin-left: 8px; }
+/* 特訓終了ボタン：ゲーム画面(position:relative)の右上に絶対配置。特訓中のみJSが表示する */
+#training-quit-btn {
+  display: none; position: absolute; top: 0; right: 0; z-index: 60;
+  background: rgba(231,76,60,0.15); border: 1px solid #e74c3c; color: #e74c3c;
+  padding: 6px 12px; border-radius: 16px; font-size: 0.8em; font-weight: bold;
+  cursor: pointer; touch-action: manipulation;
+}
+#training-quit-btn:active { background: rgba(231,76,60,0.35); }
 .flash-green { background-color: #27ae60 !important; }
 .flash-red { background-color: #c0392b !important; }
 #countdown { font-size: 4em; font-weight: 900; color: white; display: none; margin-top: 15px; min-height: 60px;}
@@ -297,17 +309,6 @@ button.action-btn { padding: 15px 30px; font-size: 1.2em; background-color: #e74
 }
 #bgm-toggle-btn.bgm-off { border-color: #7f8c8d; color: #7f8c8d; background: rgba(127,140,141,0.1); }
 
-/* ==== ★ 苦手音 集中特訓モードのトグル ==== */
-#focus-weak-toggle-btn {
-  background: rgba(127,140,141,0.1); border: 1px solid #7f8c8d; color: #7f8c8d;
-  padding: 7px 14px; border-radius: 20px; font-size: 0.85em; font-weight: bold;
-  cursor: pointer; margin: 0 auto 16px 8px; display: inline-block; touch-action: manipulation;
-}
-#focus-weak-toggle-btn.focus-on {
-  border-color: #e74c3c; color: #e74c3c; background: rgba(231,76,60,0.15);
-  box-shadow: 0 0 10px rgba(231,76,60,0.3);
-}
-
 /* ==== ★ リザルト表示（今回の弱点サマリー・操作ボタン）==== */
 .result-score-line { font-size: 1.25em; font-weight: bold; margin-bottom: 4px; }
 /* 操作ボタンはリザルト上部に横並びで置き、狭い画面でも必ず押せるようにする */
@@ -412,6 +413,8 @@ button.action-btn { padding: 15px 30px; font-size: 1.2em; background-color: #e74
   .session-weak-title { font-size: 0.72em; margin-bottom: 3px; }
   .session-weak-item { font-size: 0.78em; padding: 2px 6px; }
   .keys { margin-top: 4px; }
+  /* ★ 横画面では特訓終了ボタンを小さくし、ステータス行との重なりを抑える */
+  #training-quit-btn { padding: 4px 10px; font-size: 0.72em; }
   /* ★ 開放音数/判定端末バッジを非表示にした分、鍵盤を大きく表示する */
   .key { height: 128px; padding-bottom: 6px; font-size: 0.8em; }
   .key.black-key { height: 80px; width: 92%; max-width: 56px; }

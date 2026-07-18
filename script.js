@@ -208,21 +208,75 @@ window.addEventListener('focus', () => {
   resumeBgmFromBackground();
 });
 
-// ==== ★ 苦手音 集中特訓モードのトグル ====
-// ONにすると、そのステージで苦手な音に絞って出題される。
-// スコア計算は通常と同じだが、自己ベスト更新・ランキング送信の対象外（endGame側で制御）。
-// （特訓スコアでベストが埋まると、以後の通常プレイでランキング送信の機会が失われるため）
-function toggleFocusWeakMode() {
-  focusWeakMode = !focusWeakMode;
-  localStorage.setItem('saxEarTrainFocusWeakMode', String(focusWeakMode));
-  updateFocusWeakToggleUI();
+// ==== ★ 苦手特訓モード（時間無制限・全音開放の反復練習モード）====
+// 旧「focusWeakMode」トグル（通常プレイの出題だけ変える方式）は廃止し、独立モードに昇格した。
+//   ・時間制限なし（タイマー・3分フェイルセーフとも動かさない）
+//   ・最初から全音開放（連続正解での拡張・ミスでの縮小なし）
+//   ・スコア・コンボなし。代わりに出題数／正答率／平均反応時間を表示する
+//   ・苦手な音ほど出題確率が上がる（候補の絞り込みはしない。同音連続・音階なぞりの
+//     回避は通常モードと同様に適用する＝統計の歪み防止のため）
+//   ・右上の「🏁 特訓終了」でいつでも終了。終了後は今回ミスした音を表示する
+//   ・履歴・成長グラフ・自己ベスト・ランキングには一切記録しない（苦手統計のみ更新）
+function beginTraining() {
+  isTrainingMode = true;
+  document.getElementById('start-screen').style.display = 'none';
+  document.getElementById('game-screen').style.display = 'block';
+  document.body.classList.add('hide-sidebars');
+  stopBGM(true);
+  lockBodyScroll();
+  startSequence();
 }
 
-function updateFocusWeakToggleUI() {
-  const btn = document.getElementById('focus-weak-toggle-btn');
-  if (!btn) return;
-  btn.innerText = focusWeakMode ? '🎯 苦手特訓: ON' : '🎯 苦手特訓: OFF';
-  btn.classList.toggle('focus-on', focusWeakMode);
+// ★ 特訓中の上部バー（出題数・正答率・平均反応時間）を更新する
+function updateTrainingStats() {
+  const countEl = document.getElementById('training-count');
+  const accEl = document.getElementById('training-accuracy');
+  const avgEl = document.getElementById('training-avgtime');
+  if (countEl) countEl.innerText = sessionAnsweredCount;
+  if (accEl) accEl.innerText = sessionAnsweredCount > 0 ? Math.round((sessionCorrectCount / sessionAnsweredCount) * 100) + '%' : '-';
+  if (avgEl) avgEl.innerText = sessionAnsweredCount > 0 ? Math.round(sessionTotalTime / sessionAnsweredCount) + 'ms' : '-';
+}
+
+// ★ 特訓終了（右上の🏁ボタンから任意のタイミングで呼ばれる）
+function endTraining() {
+  if (!isTrainingMode) return;
+  if (isCountingDown) return; // カウントダウン中の終了は不可（カウント完了後にゲームが始まってしまうため）
+  isPlayingGame = false;
+  isWaitingForAnswer = false;
+  // ★ isTrainingModeはリザルト中もtrueのまま維持する。
+  //   「もう一度特訓」(startSequence)がそのまま特訓として再開できるようにするため。
+  //   falseに戻すのはステージ選択へ戻る時（returnToStartScreen）。
+
+  document.getElementById('instrument-select').disabled = false;
+  document.getElementById('keyboard-mode-select').disabled = false;
+  document.getElementById('training-quit-btn').style.display = 'none';
+  updateDifficulty(); // ★ フリープレイ用に全鍵盤アクティブ化（鍵盤はそのまま使える）
+  updateAnalyticsUI();
+
+  const answered = sessionAnsweredCount;
+  const accuracy = answered > 0 ? Math.round((sessionCorrectCount / answered) * 100) : 0;
+  const avgTime = answered > 0 ? Math.round(sessionTotalTime / answered) : 0;
+
+  // ★ 履歴・成長グラフには記録しない（時間無制限・全音開放は通常プレイと条件が違いすぎ、
+  //   スコアも存在しないため、通常記録に混ぜると比較を汚してしまう）
+  let endMsg = `<div class="result-score-line">🎯 特訓おつかれさま！</div>`;
+  endMsg += `<div class="rank-display" style="color:#1abc9c; font-size:1em;">出題 ${answered}問 ・ 正答率 ${accuracy}% ・ 平均反応 ${avgTime}ms</div>`;
+
+  endMsg += `<div class="result-actions">`;
+  endMsg += `<button class="action-btn result-guard-btn" disabled onclick="startSequence()">もう一度特訓 <small>(Enter)</small></button>`;
+  endMsg += `<button class="link-btn result-guard-btn" disabled onclick="returnToStartScreen();">🔁 ステージ選択</button>`;
+  endMsg += `</div>`;
+
+  endMsg += buildSessionWeaknessHTML();
+  endMsg += `<div style="font-size:0.8em; color:#1abc9c; margin: 8px 0;">🎹 下の鍵盤はそのまま鳴らせます。ピッチ確認にどうぞ。</div>`;
+
+  document.getElementById('game-message-area').innerHTML = endMsg;
+
+  // ★ 誤タップ防止ガード（通常リザルトと同様）
+  resultGuardUntil = Date.now() + RESULT_TAP_GUARD_MS;
+  setTimeout(() => {
+    document.querySelectorAll('.result-guard-btn').forEach(b => { b.disabled = false; });
+  }, RESULT_TAP_GUARD_MS);
 }
 
 const baseFreqs = {
@@ -345,8 +399,8 @@ let sessionAnsweredCount = 0;
 let sessionCorrectCount = 0;
 let sessionTotalTime = 0;
 
-// ★ 苦手音 集中特訓モード：ONにすると、苦手な音（音程）に絞って出題する
-let focusWeakMode = (localStorage.getItem('saxEarTrainFocusWeakMode') === 'true');
+// ★ 苦手特訓モード中かどうか（時間無制限・全音開放の独立モード。beginTraining/endTrainingで制御）
+let isTrainingMode = false;
 
 // ==== ★ ステージ管理 ====
 let currentStage = 1;
@@ -430,6 +484,8 @@ function loadStageNumberMap(key) {
 }
 let submittedBestByStage = loadStageNumberMap('saxEarTrainSubmittedBestByStage');
 let bestComboByStage = loadStageNumberMap('saxEarTrainBestComboByStage');
+// ★ Discordへ通知済みのスコア（ステージ別）。同じベストの再送信で通知が重複しないようにする
+let discordNotifiedByStage = loadStageNumberMap('saxEarTrainDiscordNotifiedByStage');
 
 // ==== ★ 外部送信（GAS/Discord）設定 ====
 // TODO: Discord Webhook URLを実際の値に置き換えてください
@@ -600,6 +656,9 @@ function updateDifficulty() {
     ? ((mode === 'pc') ? chromaticSequencePC : chromaticSequenceMobile)
     : whiteKeyGroup;
 
+  // ★ 苦手特訓モードは最初から全音開放（連続正解での拡張・ミスでの縮小は行わない）
+  if (isTrainingMode) currentNoteCount = activeNoteSequence.length;
+
   if (currentNoteCount > activeNoteSequence.length) currentNoteCount = activeNoteSequence.length;
   currentAvailableNotes = activeNoteSequence.slice(0, currentNoteCount);
   
@@ -670,8 +729,8 @@ function closeRulesModal() { document.getElementById('rules-modal-overlay').clas
 function updateGameStatusLine() {
   const instrumentText = document.getElementById('instrument-select').selectedOptions[0].text;
   const modeText = document.getElementById('keyboard-mode-select').selectedOptions[0].text;
-  const focusText = focusWeakMode ? ' ・ 🎯苦手特訓' : '';
-  document.getElementById('game-status-line').innerText = `🎷 ${instrumentText} ・ ${modeText} ・ STAGE ${currentStage}${focusText}`;
+  const modeSuffix = isTrainingMode ? ' ・ 🎯苦手特訓（時間無制限）' : '';
+  document.getElementById('game-status-line').innerText = `🎷 ${instrumentText} ・ ${modeText} ・ STAGE ${currentStage}${modeSuffix}`;
 
   // ★ 「このステージでの自己ベスト」と、次のステージ解放までの残りを表示する
   const progressEl = document.getElementById('stage-progress-line');
@@ -690,6 +749,7 @@ function updateGameStatusLine() {
 }
 
 function beginGame() {
+  isTrainingMode = false; // ★ 通常プレイ。特訓はbeginTraining()から開始する
   document.getElementById('start-screen').style.display = 'none';
   document.getElementById('game-screen').style.display = 'block';
   // ★ ゲーム画面では鍵盤に全幅を使いたいので、横画面時にサイドバーを隠すためのクラスを付ける
@@ -700,6 +760,7 @@ function beginGame() {
 }
 
 function returnToStartScreen() {
+  isTrainingMode = false; // ★ 特訓リザルトから戻った場合もここでモードを解除する
   document.getElementById('game-screen').style.display = 'none';
   document.getElementById('start-screen').style.display = 'block';
   document.getElementById('start-btn').style.display = '';
@@ -884,12 +945,19 @@ function beginCountdownSequence() {
   document.getElementById('start-btn').style.display = 'none';
   document.getElementById('game-message-area').innerHTML = "準備はいい？";
   document.getElementById('countdown').style.display = 'block';
+
+  // ★ 通常プレイ／苦手特訓で上部バーと終了ボタンの表示を切り替える
+  document.getElementById('game-stats-bar').style.display = isTrainingMode ? 'none' : 'flex';
+  document.getElementById('game-sub-stats-bar').style.display = isTrainingMode ? 'none' : 'flex';
+  document.getElementById('training-stats-bar').style.display = isTrainingMode ? 'flex' : 'none';
+  document.getElementById('training-quit-btn').style.display = isTrainingMode ? 'block' : 'none';
   
   combo = 0; maxCombo = 0; streak = 0; score = 0; timeLeft = 30; currentNoteCount = 4; recentQuestionNotes = [];
   sessionMistakes = {}; // ★ 今回の弱点サマリー用の記録をリセット
   sessionAnsweredCount = 0; sessionCorrectCount = 0; sessionTotalTime = 0; // ★ 成長グラフ用の集計をリセット
   weakNotesDisplayCount = 3;
   updateStats(); updateDifficulty(); updateGameStatusLine();
+  if (isTrainingMode) updateTrainingStats();
   document.getElementById('combo-message').innerHTML = '';
 
   const now = audioCtx.currentTime;
@@ -912,11 +980,14 @@ function startGameLoop() {
   isPlayingGame = true;
   gameStartTimestamp = Date.now(); // ★ フェイルセーフ用に開始時刻を記録
   updateDifficulty();
-  timerInterval = setInterval(() => {
-    timeLeft--; updateStats();
-    // ★ 残り時間切れ、または万一の異常で長時間続いた場合は強制終了する
-    if (timeLeft <= 0 || (Date.now() - gameStartTimestamp) > MAX_GAME_DURATION_MS) endGame();
-  }, 1000);
+  // ★ 苦手特訓モードは時間無制限のためタイマーを起動しない（右上の🏁特訓終了ボタンで終わる）
+  if (!isTrainingMode) {
+    timerInterval = setInterval(() => {
+      timeLeft--; updateStats();
+      // ★ 残り時間切れ、または万一の異常で長時間続いた場合は強制終了する
+      if (timeLeft <= 0 || (Date.now() - gameStartTimestamp) > MAX_GAME_DURATION_MS) endGame();
+    }, 1000);
+  }
   setTimeout(nextQuestion, 1200); 
 }
 
@@ -927,29 +998,23 @@ function getNextNoteByWeight(poolOverride) {
   //   省略時は従来通り currentAvailableNotes（開放中の音すべて）から選ぶ。
   const notesPool = (poolOverride && poolOverride.length > 0) ? poolOverride : currentAvailableNotes;
   const statsForStage = noteStatsByStage[currentStage];
-  let totalWeight = 0; let weights = {};
+  let weights = {};
   notesPool.forEach(note => {
     let stat = statsForStage[note]; let weight = 1.0; 
-    if (stat.attempts > 0) {
-      weight += (1 - (stat.correct / stat.attempts)) * 2.0;
-      weight += Math.min((stat.totalTime / stat.correct || 1000) / 800, 1.5);
+    // ★ 弱点優先の重み付けは「苦手特訓モード専用」。
+    //   通常モードは均等ランダム（全音とも重み1.0固定）とし、ランキングの公平性を保つ。
+    //   ※かつては通常モードにも軽い弱点優先（ミス率×2.0＋反応時間係数）が入っていたが、
+    //     苦手な音が多い人ほど難しい出題を多く引いてスコアが伸びにくい構造になるため、
+    //     苦手特訓モードの実装を機に廃止した（練習は特訓モードの役割に一本化）。
+    if (isTrainingMode && stat.attempts > 0) {
+      const missRate = 1 - (stat.correct / stat.attempts);
+      const timeFactor = Math.min((stat.totalTime / stat.correct || 1000) / 800, 1.5);
+      // ★ 苦手なほど「出題確率」を強めに引き上げる。最も苦手な音は完璧な音の最大約9倍出やすい。
+      //   統計は1問ごとに更新されるため、特訓中に改善すれば出題も自動的に均されていく。
+      weight += missRate * 5.0 + timeFactor * 2.0;
     }
-    weights[note] = weight; totalWeight += weight;
+    weights[note] = weight;
   });
-
-  // ★ 苦手音 集中特訓モード：出題対象を「苦手な音」の上位半分だけに絞り込む
-  //   （正答率が低い順→同率なら反応が遅い順。データ未計測の音は中間の扱いにする）
-  let basePool = notesPool;
-  if (focusWeakMode) {
-    const ranked = notesPool.map(note => {
-      const stat = statsForStage[note];
-      const rawAccuracy = stat.attempts > 0 ? (stat.correct / stat.attempts) : 0.5;
-      const avgTime = stat.correct > 0 ? (stat.totalTime / stat.correct) : 1200;
-      return { note, rawAccuracy, avgTime };
-    }).sort(compareWeakness);
-    const takeCount = Math.max(3, Math.ceil(ranked.length / 2));
-    basePool = ranked.slice(0, takeCount).map(r => r.note);
-  }
 
   const isImmediateRepeat = (note) => 
     recentQuestionNotes.length >= 1 && recentQuestionNotes[recentQuestionNotes.length - 1] === note;
@@ -965,9 +1030,13 @@ function getNextNoteByWeight(poolOverride) {
     return Math.abs(step1) === 1 && step1 === step2;
   };
 
-  let candidates = basePool.filter(n => !isImmediateRepeat(n) && !formsSimpleScaleRun(n));
-  if (candidates.length === 0) candidates = basePool.filter(n => !isImmediateRepeat(n));
-  if (candidates.length === 0) candidates = basePool;
+  // ★ 「同じ音の連続」「単純な音階なぞり」は特訓モードでも避ける。
+  //   直前と同じ音は聴いた記憶だけで正解できてしまい、その音の統計（正答率・反応時間）が
+  //   実力以上に良く記録される。これが積もると苦手ランキングが実態とずれるため、
+  //   出やすさの調整は「重み」だけで行い、連続出題そのものは許可しない。
+  let candidates = notesPool.filter(n => !isImmediateRepeat(n) && !formsSimpleScaleRun(n));
+  if (candidates.length === 0) candidates = notesPool.filter(n => !isImmediateRepeat(n));
+  if (candidates.length === 0) candidates = notesPool;
 
   let candidateTotalWeight = 0;
   candidates.forEach(n => { candidateTotalWeight += weights[n]; });
@@ -1076,6 +1145,20 @@ function checkAnswer(answerNote) {
       intervalStats[currentIntervalClass].correct++;
       intervalStats[currentIntervalClass].totalTime += responseTime;
     }
+
+    // ★ 苦手特訓モード：スコア・コンボ・開放音の増減は行わず、統計更新と正誤フィードバックのみ
+    if (isTrainingMode) {
+      saveStats(); updateAnalyticsUI();
+      playCorrectSE();
+      document.body.classList.add('flash-green');
+      setTimeout(() => document.body.classList.remove('flash-green'), 100);
+      updateTrainingStats();
+      document.getElementById('game-message-area').innerHTML = `<div>⭕ 正解！ <span style="font-size:0.8em; color:#bdc3c7;">(${responseTime}ms)</span></div>`;
+      const trainOkBtn = document.getElementById('note-' + answerNote);
+      if (trainOkBtn) { trainOkBtn.classList.add('correct-highlight'); setTimeout(() => trainOkBtn.classList.remove('correct-highlight'), 300); }
+      setTimeout(nextQuestion, 500);
+      return;
+    }
     
     if (streak > 0 && streak % 3 === 0) {
       currentNoteCount = Math.min(activeNoteSequence.length, currentNoteCount + 2);
@@ -1144,6 +1227,20 @@ function checkAnswer(answerNote) {
     // ★ 今回のプレイの弱点として記録する（ステージ4は音程、それ以外は音名で集計）
     const mistakeKey = (currentStage === 4) ? ('interval:' + currentIntervalClass) : currentQuestionNote;
     sessionMistakes[mistakeKey] = (sessionMistakes[mistakeKey] || 0) + 1;
+
+    // ★ 苦手特訓モード：開放音の縮小は行わず、正解の提示と統計更新のみ
+    if (isTrainingMode) {
+      saveStats(); updateAnalyticsUI();
+      playIncorrectSE();
+      document.body.classList.add('flash-red');
+      setTimeout(() => document.body.classList.remove('flash-red'), 100);
+      updateTrainingStats();
+      const trainNgBtn = document.getElementById('note-' + currentQuestionNote);
+      if (trainNgBtn) { trainNgBtn.classList.add('correct-highlight'); setTimeout(() => trainNgBtn.classList.remove('correct-highlight'), 800); }
+      document.getElementById('game-message-area').innerHTML = `<div>正解: <strong>${noteNames[currentQuestionNote]}</strong></div>`;
+      setTimeout(nextQuestion, 1000);
+      return;
+    }
 
     currentNoteCount = Math.max(4, currentNoteCount - 1);
     saveStats(); updateAnalyticsUI(); updateDifficulty(); 
@@ -1399,6 +1496,10 @@ function buildSessionWeaknessHTML() {
     .slice(0, 3);
 
   if (entries.length === 0) {
+    // ★ 二重ガード：ノーミス表示は「1問以上正解している」場合のみ。
+    //   （上のsessionAnsweredCountガードと論理的には重複するが、将来の改修で
+    //     集計タイミングが変わっても「回答ゼロでノーミス」が復活しないよう防衛的に置く）
+    if (sessionCorrectCount === 0) return '';
     return `<div class="session-weak-box session-weak-perfect">🎉 ノーミス！今回は間違いゼロでした</div>`;
   }
 
@@ -1445,8 +1546,7 @@ function endGame() {
     ts: now.getTime(),
     stage: currentStage,
     avgTime: sessionAnsweredCount > 0 ? Math.round(sessionTotalTime / sessionAnsweredCount) : 0,
-    accuracy: sessionAnsweredCount > 0 ? Math.round((sessionCorrectCount / sessionAnsweredCount) * 100) : 0,
-    focus: focusWeakMode
+    accuracy: sessionAnsweredCount > 0 ? Math.round((sessionCorrectCount / sessionAnsweredCount) * 100) : 0
   });
   // 履歴が無限に増えないよう直近200件までに制限する
   if (scoreHistory.length > 200) scoreHistory = scoreHistory.slice(-200);
@@ -1455,12 +1555,10 @@ function endGame() {
   renderGrowthChart(); // ★ グラフも最新の記録で更新
   
   // ★ ベストスコアは「プレイしたステージ」の記録として更新する。
-  //   ただし🎯苦手特訓モード中のプレイは、自己ベスト更新・ランキング送信の対象外とする。
-  //   （特訓は出題が苦手な音に偏る特殊条件なので通常記録と混ぜない。また、特訓スコアで
-  //     ベストが埋まると以後の通常プレイでランキング送信の機会が失われてしまうため。
-  //     履歴・統計・成長グラフには通常通り記録される）
+  //   ※endGameは通常プレイ専用（苦手特訓は時間無制限のためタイマー経由のendGameに到達せず、
+  //     endTraining側で終了する。特訓は履歴・ベスト・ランキングに一切記録されない）
   const wasUnlocked = { 2: isStageUnlocked(2), 3: isStageUnlocked(3), 4: isStageUnlocked(4) };
-  const isNewBest = !focusWeakMode && score > (bestScoreByStage[currentStage] || 0);
+  const isNewBest = score > (bestScoreByStage[currentStage] || 0);
   if (isNewBest) {
     bestScoreByStage[currentStage] = score;
     localStorage.setItem('saxEarTrainBestScoreByStage', JSON.stringify(bestScoreByStage));
@@ -1470,6 +1568,7 @@ function endGame() {
   }
   renderStageLockState();
   updateGameStatusLine();
+  renderBestSubmitSection(); // ★ PCではリザルト中もサイドバーが見えるため、新ベストを送信欄へ即反映する
   
   const justUnlockedStages = [2, 3, 4].filter(n => !wasUnlocked[n] && isStageUnlocked(n));
   
@@ -1516,11 +1615,6 @@ function endGame() {
         <button id="submit-score-btn" class="action-btn" onclick="submitScore(${score}, ${finalCombo}, ${currentStage})" style="width:100%; margin-top:8px;">📤 ランキングにスコアを送信</button>
         <div id="submit-status-msg" class="score-submit-status"></div>
       </div>`;
-  }
-
-  // ★ 苦手特訓モードのプレイは自己ベスト・ランキングの対象外である旨を明示する
-  if (focusWeakMode) {
-    endMsg += `<div style="font-size:0.8em; color:#e74c3c; margin-top:6px;">🎯 苦手特訓モードのため、このスコアは自己ベスト・ランキングの対象外です</div>`;
   }
 
   // ★ 今回のプレイの弱点サマリー
@@ -1575,13 +1669,36 @@ function sendScoreToRanking(playerName, finalScore, finalCombo, stageNum, status
     headers: { 'Content-Type': 'text/plain' }, // ★ GAS側のCORSプリフライト回避のためtext/plainを維持
     body: JSON.stringify({ name: playerName, score: finalScore, combo: finalCombo, deviceId: getOrCreateDeviceId() })
   })
-  .then(() => {
+  .then((response) => {
+    // ★ fetchはネットワーク断でしか失敗しないため、GASがエラー(500等)を返した場合も
+    //   .thenに到達してしまう。HTTPステータスを確認し、失敗時は成功扱いにしない
+    //   （でないと未記録なのに送信済みフラグが立ち、送信ボタンが消えてしまう）。
+    if (!response.ok) throw new Error('GAS送信エラー: HTTP ' + response.status);
+
     if (statusEl) statusEl.innerText = '✅ 送信完了！ランキングを更新しました';
     // ★ 送信済みベストを記録し、サイドバーで「✅ 送信済み」と表示できるようにする
     submittedBestByStage[stageNum] = Math.max(submittedBestByStage[stageNum] || 0, finalScore);
     localStorage.setItem('saxEarTrainSubmittedBestByStage', JSON.stringify(submittedBestByStage));
     renderBestSubmitSection();
     if (typeof loadLeaderboard === 'function') loadLeaderboard();
+
+    // ==== 2. スコアが閾値を超えていればDiscordへ通知 ====
+    // ★ GAS送信の「成功後」にのみ通知する（記録されていないスコアを祝ってしまわないため）。
+    //   また、同じベストを再送信するたびに通知が重複しないよう、
+    //   ステージごとに「通知済みスコア」を記録し、それを超えた時だけ通知する。
+    if (finalScore >= SCORE_ALERT_THRESHOLD && finalScore > (discordNotifiedByStage[stageNum] || 0)) {
+      discordNotifiedByStage[stageNum] = finalScore;
+      localStorage.setItem('saxEarTrainDiscordNotifiedByStage', JSON.stringify(discordNotifiedByStage));
+      fetch(DISCORD_WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: "🔥 伝説誕生！ **" + playerName + "** が驚異の **" + finalScore + "点** を叩き出しました！ (最大コンボ: " + finalCombo + ")"
+        })
+      }).catch(err => {
+        console.error('Discordへの通知に失敗しました:', err);
+      });
+    }
   })
   .catch(err => {
     console.error(err);
@@ -1590,19 +1707,6 @@ function sendScoreToRanking(playerName, finalScore, finalCombo, stageNum, status
   .finally(() => {
     if (submitBtn) submitBtn.disabled = false;
   });
-
-  // ==== 2. スコアが閾値を超えていればDiscordへ通知 ====
-  if (finalScore >= SCORE_ALERT_THRESHOLD) {
-    fetch(DISCORD_WEBHOOK_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        content: "🔥 伝説誕生！ **" + playerName + "** が驚異の **" + finalScore + "点** を叩き出しました！ (最大コンボ: " + finalCombo + ")"
-      })
-    }).catch(err => {
-      console.error('Discordへの通知に失敗しました:', err);
-    });
-  }
 }
 
 // ★ リザルト画面の送信ボタン用（自己ベスト更新時のみ表示される）
@@ -1838,6 +1942,9 @@ function resetKeybindSettings() {
 }
 
 let isSpaceHeld = false;
+// ★ Space押下中にウィンドウのフォーカスを失うとkeyupを取り逃して押下状態が固着し、
+//   （修飾キーモードで）戻った後の白鍵入力が半音化してしまうため、blurで必ず解除する
+window.addEventListener('blur', () => { isSpaceHeld = false; });
 
 window.addEventListener('keydown', (e) => {
   const key = e.key.toLowerCase();
@@ -2026,7 +2133,6 @@ function initApp() {
   document.getElementById('device-badge').innerText = `判定端末: ${DEVICE_LABELS[deviceType]}`;
   updateNoteLabels();
   updateBgmToggleUI();
-  updateFocusWeakToggleUI();
   rebuildKeyMaps();
   updateKeyHintLabels();
   updateHistoryUI();

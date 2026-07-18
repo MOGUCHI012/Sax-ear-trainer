@@ -6,7 +6,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=M+PLUS+Rounded+1c:wght@700;900&display=swap" rel="stylesheet">
-<title>Transposing Ear Training - V34</title>
+<title>Transposing Ear Training - V35</title>
 
 <!-- ★ PWA対応：ホーム画面に追加するとブラウザUI無しの全画面アプリとして起動できる -->
 <link rel="manifest" href="manifest.json">
@@ -18,8 +18,10 @@
 <meta name="apple-mobile-web-app-title" content="Ear Trainer">
 <meta name="mobile-web-app-capable" content="yes">
 
-<!-- ★ CSSファイルを外部から読み込む -->
-<link rel="stylesheet" href="style.css">
+<!-- ★ CSSファイルを外部から読み込む
+     ?v= はキャッシュバスター。ブラウザ/PWAが古いファイルを配信し続ける問題の対策で、
+     JS/CSSを更新したら必ずこの番号（とタイトルのV表記）を上げること。 -->
+<link rel="stylesheet" href="style.css?v=35">
 </head>
 <body>
  
@@ -96,7 +98,6 @@
       <button class="link-btn" onclick="openPracticePiano();">🎹 練習用ピアノ</button>
       <br>
       <button id="bgm-toggle-btn" onclick="toggleBGM();">🔊 BGM: ON</button>
-      <button id="focus-weak-toggle-btn" onclick="toggleFocusWeakMode();">🎯 苦手特訓: OFF</button>
  
       <div class="stage-select">
         <div class="stage-card selected" id="stage-1-card" onpointerdown="event.preventDefault(); selectStage(1);">
@@ -150,17 +151,26 @@
       </div>
  
       <button id="start-btn" class="action-btn" onpointerdown="event.preventDefault(); beginGame();">ゲームスタート！ <small>(Enter)</small></button>
+      <button id="training-btn" class="action-btn" onpointerdown="event.preventDefault(); beginTraining();">🎯 苦手特訓 <small>(時間無制限)</small></button>
     </div>
  
     <!-- ==== ★ ゲーム画面 ==== -->
     <div id="game-screen" style="display:none; position:relative;">
+      <!-- ★ 特訓終了ボタン：特訓中のみ表示。右上に絶対配置し、いつでも終了できる -->
+      <button id="training-quit-btn" onpointerdown="event.preventDefault(); endTraining();">🏁 特訓終了</button>
       <div id="game-status-line"></div>
  
-      <div class="stats-bar">
+      <div class="stats-bar" id="game-stats-bar">
         <div>⏳ 残り: <span id="time">30</span>秒 <small style="opacity:0.75; font-weight:normal;">(最大3分)</small></div>
         <div>💯 スコア: <span id="score">0</span></div>
       </div>
-      <div class="sub-stats-bar">
+      <!-- ★ 苦手特訓用の統計バー：スコア/残り時間の代わりに出題数・正答率・平均反応時間を表示する -->
+      <div class="stats-bar" id="training-stats-bar" style="display:none;">
+        <div>📊 出題: <span id="training-count">0</span>問</div>
+        <div>🎯 正答率: <span id="training-accuracy">-</span></div>
+        <div>⚡ 平均反応: <span id="training-avgtime">-</span></div>
+      </div>
+      <div class="sub-stats-bar" id="game-sub-stats-bar">
         <div>🎯 連続正解: <span id="streak">0</span> 回</div>
         <div id="combo-inline-stat">🔥 コンボ: <span id="combo-inline-value">0</span></div>
         <div id="stage-progress-line" style="color:#f1c40f;">🏁 ベストスコア: 0点</div>
@@ -302,7 +312,7 @@
       ・ベストスコアは<strong>ステージごとに別々に記録</strong>されます。<br>
       ・そのステージの自己ベストを更新すると、名前を入力して<strong>部内ランキング</strong>にスコアを送信できます。<br>
       ・「苦手な音」ランキングもステージごとに集計されます。STAGE 4のみ<strong>苦手な音程（跳躍）</strong>で集計。<br>
-      ・<strong>🎯 苦手特訓モード</strong>：あなたが苦手な音に絞って出題されます。<strong>自己ベスト更新・ランキング送信の対象外</strong>です。<br>
+      ・<strong>🎯 苦手特訓モード</strong>：<strong>時間制限なし・最初から全音開放</strong>の練習モードです。苦手な音ほど出題確率が上がります。右上の<strong>🏁 特訓終了</strong>でいつでも終了でき、終了後に今回ミスした音が表示されます。スコア・ランキング・履歴への記録はありません。<br>
       ・プレイ終了後のリザルトに<strong>今回ミスした音のワースト3</strong>が表示されます。次の狙いどころにどうぞ。<br>
       <div class="rule-section-title">💡 その他</div>
       ・<strong>ゲーム終了後も鍵盤は鳴らせます。</strong>スコアに影響しないので音の確認に自由に使えます。<br>
@@ -324,6 +334,6 @@
   </div>
 </div>
  
-<script src="script.js"></script>
+<script src="script.js?v=35"></script>
 </body>
 </html>
