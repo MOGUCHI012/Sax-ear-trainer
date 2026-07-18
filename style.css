@@ -160,6 +160,14 @@ button.action-btn { padding: 15px 30px; font-size: 1.2em; background-color: #e74
   cursor: pointer; touch-action: manipulation;
 }
 #training-quit-btn:active { background: rgba(231,76,60,0.35); }
+/* 問題の再再生ボタン：終了ボタンと対になる左上配置。押す頻度が高いため少し目立つ緑系にする */
+#training-replay-btn {
+  display: none; position: absolute; top: 0; left: 0; z-index: 60;
+  background: rgba(26,188,156,0.15); border: 1px solid #1abc9c; color: #1abc9c;
+  padding: 6px 12px; border-radius: 16px; font-size: 0.8em; font-weight: bold;
+  cursor: pointer; touch-action: manipulation;
+}
+#training-replay-btn:active { background: rgba(26,188,156,0.35); }
 .flash-green { background-color: #27ae60 !important; }
 .flash-red { background-color: #c0392b !important; }
 #countdown { font-size: 4em; font-weight: 900; color: white; display: none; margin-top: 15px; min-height: 60px;}
@@ -415,6 +423,7 @@ button.action-btn { padding: 15px 30px; font-size: 1.2em; background-color: #e74
   .keys { margin-top: 4px; }
   /* ★ 横画面では特訓終了ボタンを小さくし、ステータス行との重なりを抑える */
   #training-quit-btn { padding: 4px 10px; font-size: 0.72em; }
+  #training-replay-btn { padding: 4px 10px; font-size: 0.72em; }
   /* ★ 開放音数/判定端末バッジを非表示にした分、鍵盤を大きく表示する */
   .key { height: 128px; padding-bottom: 6px; font-size: 0.8em; }
   .key.black-key { height: 80px; width: 92%; max-width: 56px; }

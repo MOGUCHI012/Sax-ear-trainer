@@ -6,7 +6,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=M+PLUS+Rounded+1c:wght@700;900&display=swap" rel="stylesheet">
-<title>Transposing Ear Training - V35</title>
+<title>Transposing Ear Training - V38</title>
 
 <!-- ★ PWA対応：ホーム画面に追加するとブラウザUI無しの全画面アプリとして起動できる -->
 <link rel="manifest" href="manifest.json">
@@ -21,7 +21,7 @@
 <!-- ★ CSSファイルを外部から読み込む
      ?v= はキャッシュバスター。ブラウザ/PWAが古いファイルを配信し続ける問題の対策で、
      JS/CSSを更新したら必ずこの番号（とタイトルのV表記）を上げること。 -->
-<link rel="stylesheet" href="style.css?v=35">
+<link rel="stylesheet" href="style.css?v=38">
 </head>
 <body>
  
@@ -56,6 +56,14 @@
   <!-- ★サイドバー（左側） -->
   <div id="history-sidebar">
     <h3>🏆 部内 トップランキング</h3>
+    <!-- ★ ランキングのタブ：総合＝従来のランキング / S1〜S4＝ステージ別 -->
+    <div class="chart-metric-tabs" id="ranking-tabs">
+      <button class="chart-tab active" data-rank-stage="all" onclick="setRankingTab('all')">総合</button>
+      <button class="chart-tab" data-rank-stage="1" onclick="setRankingTab('1')">S1</button>
+      <button class="chart-tab" data-rank-stage="2" onclick="setRankingTab('2')">S2</button>
+      <button class="chart-tab" data-rank-stage="3" onclick="setRankingTab('3')">S3</button>
+      <button class="chart-tab" data-rank-stage="4" onclick="setRankingTab('4')">S4</button>
+    </div>
     <div id="global-ranking-list">
       <div style="color:#bdc3c7; text-align:center; font-size:0.9em;">読み込み中...</div>
     </div>
@@ -117,7 +125,7 @@
           <div class="stage-badge">STAGE 3</div>
           <div class="stage-name">固定基準音・下行あり</div>
           <div class="stage-rule-label">ルール</div>
-          <div class="stage-desc">基準音は「ド」か「オクターブ上のド」。上のドの時は、そこから下の音が出題。<br>スコア倍率 x2.0</div>
+          <div class="stage-desc">基準音は「ド」か「オクターブ上のド」。それぞれの基準音の近くから出題範囲が広がっていく（上のドの時は下の音が出題）。<br>スコア倍率 x2.0</div>
           <div class="lock-overlay" id="stage-3-lock-label">🔒 STAGE2で150,000点</div>
         </div>
         <div class="stage-card locked" id="stage-4-card" onpointerdown="event.preventDefault(); selectStage(4);">
@@ -143,6 +151,7 @@
         <select id="notation-select" class="game-setting" onchange="handleNotationChange()">
           <option value="solfege" selected>表記: ドレミ</option>
           <option value="alpha">表記: CDE</option>
+          <option value="nishizuka">表記: 西塚式</option>
         </select>
         <select id="semitone-mode-select" class="game-setting" onchange="handleSemitoneModeChange()">
           <option value="dedicated" selected>半音入力: 専用キー</option>
@@ -151,13 +160,15 @@
       </div>
  
       <button id="start-btn" class="action-btn" onpointerdown="event.preventDefault(); beginGame();">ゲームスタート！ <small>(Enter)</small></button>
-      <button id="training-btn" class="action-btn" onpointerdown="event.preventDefault(); beginTraining();">🎯 苦手特訓 <small>(時間無制限)</small></button>
+      <button id="training-btn" class="action-btn" onpointerdown="event.preventDefault(); beginTraining();">🎯 苦手特訓</button>
     </div>
  
     <!-- ==== ★ ゲーム画面 ==== -->
     <div id="game-screen" style="display:none; position:relative;">
       <!-- ★ 特訓終了ボタン：特訓中のみ表示。右上に絶対配置し、いつでも終了できる -->
       <button id="training-quit-btn" onpointerdown="event.preventDefault(); endTraining();">🏁 特訓終了</button>
+      <!-- ★ 問題の再再生ボタン：特訓中のみ表示。左上に絶対配置（時間無制限なので聞き直し自由） -->
+      <button id="training-replay-btn" onpointerdown="event.preventDefault(); replayTrainingQuestion();">🔊 もう一度聞く</button>
       <div id="game-status-line"></div>
  
       <div class="stats-bar" id="game-stats-bar">
@@ -291,7 +302,7 @@
     <div class="rule-box">
       <div class="rule-section-title">🎮 基本ルール</div>
       ・基準音のあとに問題音が鳴ります。正しい鍵盤を素早く押しましょう。<br>
-      ・<strong>3連続正解</strong>で出題される音が<strong>2つ</strong>増え、ミスすると<strong>1つ</strong>減ります。<br>
+      ・<strong>3連続正解</strong>で出題される音が<strong>2つ</strong>増え、ミスすると<strong>1つ</strong>減ります（STAGE 3は上下の基準音それぞれの近くから<strong>1音ずつ</strong>広がり、ミスした側の範囲だけが1音減ります）。<br>
       ・間違えた時は<strong>正解の鍵盤が緑色</strong>に光ります。<br>
       ・<strong>オクターブは区別しません。</strong>出題が「ド↑」でも1オクターブ低い「ド」を押せば正解です。<br>
       ・STAGE 3・4では基準音が鳴る際、<strong>対象の鍵盤が黄色く光り</strong>、テキストでも音名をお知らせします。<br>
@@ -307,12 +318,13 @@
       　－<strong>専用キー(推奨)</strong>：W, E, T, Y, U などが独立した黒鍵として機能します。<br>
       　－<strong>修飾キー(Space)</strong>：<strong>スペースキーを押しながら</strong>白鍵のキーで、その半音になります（例：Space+A＝Db）。<br>
       ・「⌨️ キー割り当てをカスタマイズ」からキー配置を自由に変更できます。<br>
-      ・ヘッダーの「表記」設定で、音名表示を「ドレミ」⇔「CDE」に切り替えられます。<br>
+      ・ヘッダーの「表記」設定で、音名表示を「ドレミ」「CDE」「西塚式」から選べます（西塚式は半音をデ・リ・フィ・サ・チで表す方式です）。<br>
       <div class="rule-section-title">📊 記録とランキング</div>
       ・ベストスコアは<strong>ステージごとに別々に記録</strong>されます。<br>
+      ・ランキングは<strong>「総合」と「ステージ別（S1〜S4）」</strong>をタブで切り替えて見られます。<br>
       ・そのステージの自己ベストを更新すると、名前を入力して<strong>部内ランキング</strong>にスコアを送信できます。<br>
       ・「苦手な音」ランキングもステージごとに集計されます。STAGE 4のみ<strong>苦手な音程（跳躍）</strong>で集計。<br>
-      ・<strong>🎯 苦手特訓モード</strong>：<strong>時間制限なし・最初から全音開放</strong>の練習モードです。苦手な音ほど出題確率が上がります。右上の<strong>🏁 特訓終了</strong>でいつでも終了でき、終了後に今回ミスした音が表示されます。スコア・ランキング・履歴への記録はありません。<br>
+      ・<strong>🎯 苦手特訓モード</strong>：<strong>時間制限なし・最初から全音開放</strong>の練習モードです。苦手な音ほど出題確率が上がります。左上の<strong>🔊 もう一度聞く</strong>で問題を何度でも聞き直せます。右上の<strong>🏁 特訓終了</strong>でいつでも終了でき、終了後に今回ミスした音が表示されます。スコア・ランキング・履歴への記録はありません。<br>
       ・プレイ終了後のリザルトに<strong>今回ミスした音のワースト3</strong>が表示されます。次の狙いどころにどうぞ。<br>
       <div class="rule-section-title">💡 その他</div>
       ・<strong>ゲーム終了後も鍵盤は鳴らせます。</strong>スコアに影響しないので音の確認に自由に使えます。<br>
@@ -334,6 +346,6 @@
   </div>
 </div>
  
-<script src="script.js?v=35"></script>
+<script src="script.js?v=38"></script>
 </body>
 </html>

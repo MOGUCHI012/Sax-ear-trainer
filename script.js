@@ -237,6 +237,36 @@ function updateTrainingStats() {
   if (avgEl) avgEl.innerText = sessionAnsweredCount > 0 ? Math.round(sessionTotalTime / sessionAnsweredCount) + 'ms' : '-';
 }
 
+// ★ 特訓中の問題の再再生（🔊 もう一度聞くボタン）。
+//   基準音→問題音を初回出題と同じ間隔で鳴らし直す。再生中も回答は受け付ける。
+//   反応時間の計測は「初回の出題時点」から継続する（聞き直しに使った時間も含めて記録
+//   することで、その音が「まだ時間のかかる苦手な音」として統計に正直に残るため）。
+let lastTrainingReplayTime = 0;
+function replayTrainingQuestion() {
+  if (!isTrainingMode || !isPlayingGame) return;
+  if (!isWaitingForAnswer) return; // 正誤演出中・出題の合間は無効
+  if (!currentQuestionNote) return;
+  // ★ 連打で音が重なって濁らないよう、再生シーケンス(約1.2秒)の間は再入を防ぐ
+  const now = Date.now();
+  if (now - lastTrainingReplayTime < 1200) return;
+  lastTrainingReplayTime = now;
+
+  playSaxTone(getFrequency(currentReferenceNote), 0.4);
+  // ★ STAGE3・4は基準音の鍵盤ハイライトも初回と同様に行う
+  if (currentStage >= 3) {
+    const referenceBtn = document.getElementById('note-' + currentReferenceNote);
+    if (referenceBtn) {
+      referenceBtn.classList.add('reference-highlight');
+      setTimeout(() => referenceBtn.classList.remove('reference-highlight'), 400);
+    }
+  }
+  setTimeout(() => {
+    // 再生待ちの間に回答済み・終了済みなら問題音は鳴らさない
+    if (!isPlayingGame || !isWaitingForAnswer) return;
+    playSaxTone(getFrequency(currentQuestionNote), 0.6);
+  }, 600);
+}
+
 // ★ 特訓終了（右上の🏁ボタンから任意のタイミングで呼ばれる）
 function endTraining() {
   if (!isTrainingMode) return;
@@ -250,6 +280,7 @@ function endTraining() {
   document.getElementById('instrument-select').disabled = false;
   document.getElementById('keyboard-mode-select').disabled = false;
   document.getElementById('training-quit-btn').style.display = 'none';
+  document.getElementById('training-replay-btn').style.display = 'none';
   updateDifficulty(); // ★ フリープレイ用に全鍵盤アクティブ化（鍵盤はそのまま使える）
   updateAnalyticsUI();
 
@@ -317,8 +348,38 @@ const noteNamesAlpha   = {
   'C':'C', 'Db':'Db', 'D':'D', 'Eb':'Eb', 'E':'E', 'F':'F', 'Gb':'Gb', 'G':'G', 'Ab':'Ab', 'A':'A', 'Bb':'Bb', 'B':'B', 
   'HighC':'C↑', 'HighDb':'Db↑', 'HighD':'D↑', 'HighEb':'Eb↑', 'HighE':'E↑' 
 };
+
+// ==== ★ 西塚式表記 ====
+// 半音を「デ・リ・フィ・サ・チ」の単音カタカナで表す方式（白鍵は通常のドレミと同じ）。
+// 鍵盤上のラベルはカタカナのみ。ミス時の正解表示と苦手な音ランキングでは
+// 「カタカナ (英語)」のフルフォーマットを使う（getFullNoteName参照。矢印はカタカナ側のみ）。
+const nishizukaKatakana = { 'C':'ド', 'Db':'デ', 'D':'レ', 'Eb':'リ', 'E':'ミ', 'F':'ファ', 'Gb':'フィ', 'G':'ソ', 'Ab':'サ', 'A':'ラ', 'Bb':'チ', 'B':'シ' };
+const englishPitchNames = { 'C':'C', 'Db':'C# / Db', 'D':'D', 'Eb':'D# / Eb', 'E':'E', 'F':'F', 'Gb':'F# / Gb', 'G':'G', 'Ab':'G# / Ab', 'A':'A', 'Bb':'A# / Bb', 'B':'B' };
+const noteNamesNishizuka = {};
+allNoteKeys.forEach(k => {
+  const arrow = k.indexOf('High') === 0 ? '↑' : (k.indexOf('Low') === 0 ? '↓' : '');
+  noteNamesNishizuka[k] = nishizukaKatakana[getPitchClass(k)] + arrow;
+});
+
+// ★ 表記モード → 鍵盤ラベル用マップの解決
+function resolveNoteNames(mode) {
+  if (mode === 'alpha') return noteNamesAlpha;
+  if (mode === 'nishizuka') return noteNamesNishizuka;
+  return noteNamesSolfege;
+}
+
 let notationMode = localStorage.getItem('saxEarTrainNotationMode') || 'solfege';
-let noteNames = (notationMode === 'alpha') ? noteNamesAlpha : noteNamesSolfege;
+let noteNames = resolveNoteNames(notationMode);
+
+// ★ ミス時の正解表示・苦手な音ランキング用のフルフォーマット音名。
+//   西塚式選択時のみ「カタカナ (英語)」形式になる（例: デ↑ (C# / Db)）。
+//   ドレミ／CDE表記のときは鍵盤ラベルと同じ表記をそのまま返す。
+function getFullNoteName(note) {
+  if (notationMode !== 'nishizuka') return noteNames[note];
+  const arrow = note.indexOf('High') === 0 ? '↑' : (note.indexOf('Low') === 0 ? '↓' : '');
+  const pc = getPitchClass(note);
+  return `${nishizukaKatakana[pc]}${arrow} (${englishPitchNames[pc]})`;
+}
 
 // ★ 半音の入力方式：'dedicated'(専用キー) or 'modifier'(Space修飾キー)
 let semitoneInputMode = localStorage.getItem('saxEarTrainSemitoneInputMode') || 'dedicated';
@@ -326,7 +387,7 @@ let semitoneInputMode = localStorage.getItem('saxEarTrainSemitoneInputMode') || 
 function handleNotationChange() {
   notationMode = document.getElementById('notation-select').value;
   localStorage.setItem('saxEarTrainNotationMode', notationMode);
-  noteNames = (notationMode === 'alpha') ? noteNamesAlpha : noteNamesSolfege;
+  noteNames = resolveNoteNames(notationMode);
   updateNoteLabels();
   updateAnalyticsUI();
 }
@@ -358,9 +419,41 @@ const diatonicSequenceMobile = ['LowA', 'LowB', 'C', 'D', 'E', 'F', 'G', 'A', 'B
 const chromaticSequencePC     = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B', 'HighC'];
 const chromaticSequenceMobile = ['LowA', 'LowBb', 'LowB', 'C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B', 'HighC', 'HighDb', 'HighD', 'HighEb', 'HighE'];
 
+// ==== ★ スマホ（拡張レンジ）用の「出題順」シーケンス ====
+// 【バグ修正】従来はスマホモードで表示順（ラ↓始まり）をそのまま出題順に流用していたため、
+// STAGE1・2のスタート時に基準ドより下の音（ラ↓・シ↓等）から出題されてしまっていた。
+// 設計意図（STAGE1・2は基準ド=442から上の音のみ）に合わせ、出題順は「ド」起点の昇順とする。
+// 低音域（ラ↓・シ♭↓・シ↓）はSTAGE1・2では出題しない（鍵盤には表示され、フリープレイでは鳴らせる）。
+const questionOrderDiatonicMobile  = ['C', 'D', 'E', 'F', 'G', 'A', 'B', 'HighC', 'HighD', 'HighE'];
+const questionOrderChromaticMobile = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B', 'HighC', 'HighDb', 'HighD', 'HighEb', 'HighE'];
+// STAGE4（全音域）はドから上へ広がり、低音域は最後の拡張枠として出題対象になる
+const questionOrderStage4Mobile = questionOrderChromaticMobile.concat(['LowB', 'LowBb', 'LowA']);
+
 let activeNoteSequence = diatonicSequencePC;
 let currentNoteCount = 4;
 let currentAvailableNotes = [];
+// ★ フリープレイ（ゲーム外）で鳴らせる音＝現在表示中の鍵盤すべて（updateDifficultyで更新）
+let freePlayNotes = [];
+
+// ==== ★ STAGE3専用：両端2窓方式の開放状態 ====
+// 下窓=基準「ド」から上方向 / 上窓=基準「上のド」から下方向 に、それぞれ独立して広がる。
+// 3連続正解で両窓とも+1音、ミスは「その問題の基準音側」の窓だけ-1音（下限は開始サイズ）。
+// 鍵盤上は2窓の和集合がアクティブになる。中盤以降で両窓が重なって見た目の区別が
+// つかなくなっても、内部の2カウントは常に独立して維持される。
+const STAGE3_WINDOW_START = 4; // 下窓: ド,ド♯,レ,レ♯ / 上窓: 上のド,シ,シ♭,ラ
+let stage3LowWindow = STAGE3_WINDOW_START;
+let stage3HighWindow = STAGE3_WINDOW_START;
+
+// ★ STAGE3の2窓それぞれの「伸びていく順」の音列を返す。
+//   互いの基準音を越えて鍵盤の端まで伸びる（案1）：
+//   PC: 各13音 / スマホ: 下窓17音（ド→…→ミ↑）・上窓16音（上のド→…→ラ↓）
+function getStage3Windows() {
+  const mode = document.getElementById('keyboard-mode-select').value;
+  const seq = (mode === 'pc') ? chromaticSequencePC : chromaticSequenceMobile;
+  const up = seq.filter(n => semitoneOffsets[n] >= semitoneOffsets['C']); // ドから上へ（昇順）
+  const down = seq.filter(n => semitoneOffsets[n] <= semitoneOffsets['HighC']).slice().reverse(); // 上のドから下へ（降順）
+  return { up: up, down: down };
+}
 
 // ==== ★ 苦手な音の統計はステージごとに別々に管理する ====
 let noteStatsByStage = JSON.parse(localStorage.getItem('saxEarTrainStatsByStage')) || {};
@@ -492,6 +585,28 @@ let discordNotifiedByStage = loadStageNumberMap('saxEarTrainDiscordNotifiedBySta
 const GAS_URL = "https://script.google.com/macros/s/AKfycbzgR5pfOXgsSkY9HfQ0bEjd33iDNEYZD-z07rOtSAXBCnm7u_rRqvFnqgib_niUr2_kEg/exec";
 const DISCORD_WEBHOOK_URL = "YOUR_DISCORD_WEBHOOK_URL_HERE";
 const SCORE_ALERT_THRESHOLD = 200000;
+
+// ★ 送信トークン用の秘密文字列。gas-ranking.gs 側の SUBMIT_SECRET と必ず同じ値にすること。
+//   変更する場合は「両ファイル同時に変更 → GAS再デプロイ（新バージョン）」が必須。
+//   ※クライアントのソースから読める値なので完全な防御ではない。curl等による
+//     安易なスコア偽装を「コードを読んで署名を再実装する」レベルまで引き上げる抑止策。
+const SUBMIT_SECRET = 'saxEarTrainer-2026-brass-band-v1';
+
+// ★ 送信内容の改ざん検知用トークン（FNV-1aベースの軽量ハッシュ2本）。
+//   gas-ranking.gs に完全に同一の実装があり、GAS側で再計算して照合される。
+//   32bit乗算は通常の * だと53bit精度を超えて誤差が出るため、必ずMath.imulを使うこと。
+function computeSubmitToken(name, score, combo, deviceId, stage) {
+  var str = [name, score, combo, deviceId, stage, SUBMIT_SECRET].join('|');
+  var h1 = 0x811c9dc5;
+  var h2 = (0x811c9dc5 ^ 0x5bd1e995) >>> 0;
+  for (var i = 0; i < str.length; i++) {
+    var c = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0;
+    h2 = Math.imul(h2 ^ c, 0x01000193) >>> 0;
+    h2 = ((h2 << 13) | (h2 >>> 19)) >>> 0;
+  }
+  return h1.toString(16) + '-' + h2.toString(16);
+}
 
 // ==== ★ 端末判定とコンボ判定猶予 ====
 function detectDeviceType() {
@@ -650,27 +765,58 @@ function updateDifficulty() {
   const mode = document.getElementById('keyboard-mode-select').value;
   // ★ STAGE2以降（2・3・4）はすべて黒鍵（半音・クロマチック）を含む
   const includeChromatic = (currentStage >= 2);
-
   const whiteKeyGroup = (mode === 'pc') ? diatonicSequencePC : diatonicSequenceMobile;
-  activeNoteSequence = includeChromatic
-    ? ((mode === 'pc') ? chromaticSequencePC : chromaticSequenceMobile)
-    : whiteKeyGroup;
 
-  // ★ 苦手特訓モードは最初から全音開放（連続正解での拡張・ミスでの縮小は行わない）
-  if (isTrainingMode) currentNoteCount = activeNoteSequence.length;
+  if (currentStage === 3) {
+    // ==== ★ STAGE3: 両端2窓方式 ====
+    // activeNoteSequenceは鍵盤全体のピッチ順（音階なぞり判定・和集合の並び用）
+    activeNoteSequence = (mode === 'pc') ? chromaticSequencePC : chromaticSequenceMobile;
+    const w = getStage3Windows();
+    // ★ 苦手特訓モードは最初から両窓とも全開（基準に応じた方向の全音から出題される）
+    if (isTrainingMode) { stage3LowWindow = w.up.length; stage3HighWindow = w.down.length; }
+    // 窓サイズを実在の音列長の範囲にクランプ
+    stage3LowWindow = Math.max(STAGE3_WINDOW_START, Math.min(stage3LowWindow, w.up.length));
+    stage3HighWindow = Math.max(STAGE3_WINDOW_START, Math.min(stage3HighWindow, w.down.length));
+    // ★ 鍵盤のアクティブ状態と回答受付は「2窓の和集合」。
+    //   見た目上は重なって区別できなくなっても、内部の2カウントは独立して維持される。
+    const unionSet = {};
+    w.up.slice(0, stage3LowWindow).forEach(n => { unionSet[n] = true; });
+    w.down.slice(0, stage3HighWindow).forEach(n => { unionSet[n] = true; });
+    currentAvailableNotes = activeNoteSequence.filter(n => unionSet[n]); // ピッチ順を保った和集合
+    document.getElementById('difficulty-badge').innerText = `開放音数: 下${stage3LowWindow} / 上${stage3HighWindow}`;
+  } else {
+    // ==== ★ STAGE1・2・4: 単一窓（出題順シーケンスの先頭からcurrentNoteCount音）====
+    // 【バグ修正】スマホ（拡張レンジ）では従来、表示順（ラ↓始まり）を出題順に流用していたため、
+    // スタート時に基準ドより下の音から出題されていた。出題順は「ド」起点の専用シーケンスを使う。
+    if (mode === 'pc') {
+      activeNoteSequence = includeChromatic ? chromaticSequencePC : diatonicSequencePC;
+    } else if (currentStage === 1) {
+      activeNoteSequence = questionOrderDiatonicMobile;
+    } else if (currentStage === 2) {
+      activeNoteSequence = questionOrderChromaticMobile;
+    } else { // STAGE4
+      activeNoteSequence = questionOrderStage4Mobile;
+    }
 
-  if (currentNoteCount > activeNoteSequence.length) currentNoteCount = activeNoteSequence.length;
-  currentAvailableNotes = activeNoteSequence.slice(0, currentNoteCount);
-  
-  document.getElementById('difficulty-badge').innerText = `開放音数: ${currentNoteCount} / ${activeNoteSequence.length}`;
-  
-  const effectiveAvailableNotes = isPlayingGame ? currentAvailableNotes : activeNoteSequence;
+    // ★ 苦手特訓モードは最初から全音開放（連続正解での拡張・ミスでの縮小は行わない）
+    if (isTrainingMode) currentNoteCount = activeNoteSequence.length;
+    if (currentNoteCount > activeNoteSequence.length) currentNoteCount = activeNoteSequence.length;
+    currentAvailableNotes = activeNoteSequence.slice(0, currentNoteCount);
+    document.getElementById('difficulty-badge').innerText = `開放音数: ${currentNoteCount} / ${activeNoteSequence.length}`;
+  }
+
+  // ★ ゲーム中は開放中の音のみアクティブ。ゲーム外(null)は表示中の鍵盤すべてをアクティブにする
+  const effectiveAvailableNotes = isPlayingGame ? currentAvailableNotes : null;
 
   document.querySelectorAll('.key-group').forEach(group => {
     const whiteNote = group.dataset.whiteNote;
     group.classList.toggle('group-visible', whiteKeyGroup.includes(whiteNote));
   });
 
+  // ★ 表示中の鍵盤を集めつつ、アクティブ状態を反映する。
+  //   freePlayNotesは「ゲーム外でも鳴らせる音」＝表示中の鍵盤すべて。
+  //   （出題順から低音域を外したSTAGE1・2スマホでも、表示中の鍵盤はフリープレイで鳴らせる）
+  freePlayNotes = [];
   document.querySelectorAll('.key').forEach(el => {
     const noteId = el.id.replace('note-', '');
     const isBlack = el.classList.contains('black-key');
@@ -678,14 +824,15 @@ function updateDifficulty() {
     const groupVisible = whiteKeyGroup.includes(anchorWhiteNote);
 
     const shouldShow = isBlack ? (groupVisible && includeChromatic) : groupVisible;
+    if (shouldShow) freePlayNotes.push(noteId);
 
     el.classList.toggle('visible-key', shouldShow);
-    el.classList.toggle('active-key', shouldShow && effectiveAvailableNotes.includes(noteId));
+    el.classList.toggle('active-key', shouldShow && (effectiveAvailableNotes ? effectiveAvailableNotes.includes(noteId) : true));
   });
 }
 
 function getEffectiveAvailableNotes() {
-  return isPlayingGame ? currentAvailableNotes : activeNoteSequence;
+  return isPlayingGame ? currentAvailableNotes : freePlayNotes;
 }
 
 function updateKeyboardUI() { updateDifficulty(); }
@@ -951,8 +1098,10 @@ function beginCountdownSequence() {
   document.getElementById('game-sub-stats-bar').style.display = isTrainingMode ? 'none' : 'flex';
   document.getElementById('training-stats-bar').style.display = isTrainingMode ? 'flex' : 'none';
   document.getElementById('training-quit-btn').style.display = isTrainingMode ? 'block' : 'none';
+  document.getElementById('training-replay-btn').style.display = isTrainingMode ? 'block' : 'none';
   
   combo = 0; maxCombo = 0; streak = 0; score = 0; timeLeft = 30; currentNoteCount = 4; recentQuestionNotes = [];
+  stage3LowWindow = STAGE3_WINDOW_START; stage3HighWindow = STAGE3_WINDOW_START; // ★ STAGE3の2窓もリセット
   sessionMistakes = {}; // ★ 今回の弱点サマリー用の記録をリセット
   sessionAnsweredCount = 0; sessionCorrectCount = 0; sessionTotalTime = 0; // ★ 成長グラフ用の集計をリセット
   weakNotesDisplayCount = 3;
@@ -1083,16 +1232,15 @@ function nextQuestion() {
   setTimeout(() => {
     if (!isPlayingGame) return;
 
-    // ★ STAGE3では出題方向を基準音に合わせて絞る：
-    //   基準が「ド」なら上（ド以上）、「オクターブ上のド」なら下（上のド以下）の音のみ。
-    //   （スマホ拡張レンジの序盤は開放音が低音側に偏っておりプールが偏る/空になり得るため、
-    //     空になった場合は開放中の全音にフォールバックする）
+    // ★ STAGE3（両端2窓方式）：その問題の基準音の側の窓からのみ出題する。
+    //   基準「ド」→下窓（ドから上へstage3LowWindow音）
+    //   基準「上のド」→上窓（上のドから下へstage3HighWindow音）
     let questionPool = null;
     if (currentStage === 3) {
+      const w = getStage3Windows();
       questionPool = (currentReferenceNote === 'HighC')
-        ? currentAvailableNotes.filter(n => semitoneOffsets[n] <= semitoneOffsets['HighC'])
-        : currentAvailableNotes.filter(n => semitoneOffsets[n] >= semitoneOffsets['C']);
-      if (questionPool.length === 0) questionPool = currentAvailableNotes;
+        ? w.down.slice(0, stage3HighWindow)
+        : w.up.slice(0, stage3LowWindow);
     }
     currentQuestionNote = getNextNoteByWeight(questionPool);
 
@@ -1115,7 +1263,7 @@ function nextQuestion() {
 function checkAnswer(answerNote) {
   if (!isPlayingGame) {
     if (isCountingDown) return;
-    if (!activeNoteSequence.includes(answerNote)) return;
+    if (!freePlayNotes.includes(answerNote)) return;
     playFreePlayTone(answerNote);
     return;
   }
@@ -1161,7 +1309,14 @@ function checkAnswer(answerNote) {
     }
     
     if (streak > 0 && streak % 3 === 0) {
-      currentNoteCount = Math.min(activeNoteSequence.length, currentNoteCount + 2);
+      if (currentStage === 3) {
+        // ★ STAGE3: どちらの側の正解かを問わず、両窓が1音ずつ広がる（合計+2で従来ペースと同じ）。
+        //   上限クランプはupdateDifficulty側で行われる
+        stage3LowWindow++;
+        stage3HighWindow++;
+      } else {
+        currentNoteCount = Math.min(activeNoteSequence.length, currentNoteCount + 2);
+      }
     }
     saveStats(); updateAnalyticsUI(); updateDifficulty();
 
@@ -1170,7 +1325,14 @@ function checkAnswer(answerNote) {
     setTimeout(() => document.body.classList.remove('flash-green'), 100);
 
     let basePoints = Math.max(10, Math.floor(1000 - responseTime / 3)); 
-    let difficultyMultiplier = 1.0 + ((currentNoteCount - 4) * 0.25); 
+    // ★ 難易度倍率：STAGE3は「その問題が出た側の窓のサイズ」で計算する。
+    //   （2窓の合計を使うと開始時点から倍率が跳ね上がり、従来のスコアバランスと
+    //     220,000点のSTAGE4解放基準が崩れるため）
+    let effectiveNoteCount = currentNoteCount;
+    if (currentStage === 3) {
+      effectiveNoteCount = (currentReferenceNote === 'HighC') ? stage3HighWindow : stage3LowWindow;
+    }
+    let difficultyMultiplier = 1.0 + ((effectiveNoteCount - 4) * 0.25); 
     let stageMultiplier = STAGE_SCORE_MULTIPLIERS[currentStage] || 1.0;
     basePoints = Math.floor(basePoints * difficultyMultiplier * stageMultiplier);
 
@@ -1237,12 +1399,21 @@ function checkAnswer(answerNote) {
       updateTrainingStats();
       const trainNgBtn = document.getElementById('note-' + currentQuestionNote);
       if (trainNgBtn) { trainNgBtn.classList.add('correct-highlight'); setTimeout(() => trainNgBtn.classList.remove('correct-highlight'), 800); }
-      document.getElementById('game-message-area').innerHTML = `<div>正解: <strong>${noteNames[currentQuestionNote]}</strong></div>`;
+      document.getElementById('game-message-area').innerHTML = `<div>正解: <strong>${getFullNoteName(currentQuestionNote)}</strong></div>`;
       setTimeout(nextQuestion, 1000);
       return;
     }
 
-    currentNoteCount = Math.max(4, currentNoteCount - 1);
+    if (currentStage === 3) {
+      // ★ STAGE3: ミスした問題の基準音側の窓だけ1音減らす（下限は開始サイズ4音）
+      if (currentReferenceNote === 'HighC') {
+        stage3HighWindow = Math.max(STAGE3_WINDOW_START, stage3HighWindow - 1);
+      } else {
+        stage3LowWindow = Math.max(STAGE3_WINDOW_START, stage3LowWindow - 1);
+      }
+    } else {
+      currentNoteCount = Math.max(4, currentNoteCount - 1);
+    }
     saveStats(); updateAnalyticsUI(); updateDifficulty(); 
     
     playIncorrectSE();
@@ -1259,9 +1430,10 @@ function checkAnswer(answerNote) {
     document.getElementById('combo-message').innerText = "";
     // ★ 鍵盤のinnerTextを正規表現で加工すると、キー表記(例:「(Spc+A)」)が残ったり
     //   改行が混入したりするため、音名は noteNames から直接引く。
+    //   西塚式選択時は「カタカナ (英語)」のフルフォーマットになる（getFullNoteName）。
     //   また #game-message-area は flex-direction:column のため、テキストと<strong>が
     //   別々の行に分かれてしまう。1つの要素にまとめて1行で表示する。
-    document.getElementById('game-message-area').innerHTML = `<div>正解: <strong>${noteNames[currentQuestionNote]}</strong></div>`;
+    document.getElementById('game-message-area').innerHTML = `<div>正解: <strong>${getFullNoteName(currentQuestionNote)}</strong></div>`;
     setTimeout(nextQuestion, 1000);
   }
 }
@@ -1357,7 +1529,7 @@ function updateAnalyticsUI() {
   const shown = displayData.slice(0, weakNotesDisplayCount);
   let html = ''; 
   shown.forEach((d, i) => {
-    html += `<div class="weak-note-item"><span>${i+1}. <strong>${noteNames[d.note]}</strong></span><span>正答率: ${d.accuracy}% / 平均: ${d.avgTime}ms</span></div>`;
+    html += `<div class="weak-note-item"><span>${i+1}. <strong>${getFullNoteName(d.note)}</strong></span><span>正答率: ${d.accuracy}% / 平均: ${d.avgTime}ms</span></div>`;
   });
   listEl.innerHTML = html;
   if (moreBtn) moreBtn.style.display = (displayData.length > weakNotesDisplayCount) ? 'block' : 'none';
@@ -1664,22 +1836,38 @@ function sendScoreToRanking(playerName, finalScore, finalCombo, stageNum, status
   if (statusEl) statusEl.innerText = '送信中... (Sending...)';
 
   // ==== 1. GAS（スプレッドシート）へ送信 ====
+  const deviceId = getOrCreateDeviceId();
   fetch(GAS_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain' }, // ★ GAS側のCORSプリフライト回避のためtext/plainを維持
-    body: JSON.stringify({ name: playerName, score: finalScore, combo: finalCombo, deviceId: getOrCreateDeviceId() })
+    body: JSON.stringify({
+      name: playerName,
+      score: finalScore,
+      combo: finalCombo,
+      deviceId: deviceId,
+      stage: stageNum, // ★ ステージ別ランキング用
+      token: computeSubmitToken(playerName, finalScore, finalCombo, deviceId, stageNum) // ★ 改ざん検知トークン
+    })
   })
   .then((response) => {
     // ★ fetchはネットワーク断でしか失敗しないため、GASがエラー(500等)を返した場合も
     //   .thenに到達してしまう。HTTPステータスを確認し、失敗時は成功扱いにしない
     //   （でないと未記録なのに送信済みフラグが立ち、送信ボタンが消えてしまう）。
     if (!response.ok) throw new Error('GAS送信エラー: HTTP ' + response.status);
+    return response.json();
+  })
+  .then((json) => {
+    // ★ GASは検証拒否時もHTTP 200で {result:'error'} を返すため、本文の結果も確認する
+    if (!json || json.result !== 'success') {
+      throw new Error('サーバー側で送信が拒否されました: ' + (json && json.message ? json.message : '不明なエラー'));
+    }
 
     if (statusEl) statusEl.innerText = '✅ 送信完了！ランキングを更新しました';
     // ★ 送信済みベストを記録し、サイドバーで「✅ 送信済み」と表示できるようにする
     submittedBestByStage[stageNum] = Math.max(submittedBestByStage[stageNum] || 0, finalScore);
     localStorage.setItem('saxEarTrainSubmittedBestByStage', JSON.stringify(submittedBestByStage));
     renderBestSubmitSection();
+    rankingCacheByTab = {}; // ★ 送信でランキングが変わるため、全タブのキャッシュを破棄して再取得
     if (typeof loadLeaderboard === 'function') loadLeaderboard();
 
     // ==== 2. スコアが閾値を超えていればDiscordへ通知 ====
@@ -2038,6 +2226,19 @@ window.addEventListener('keyup', (e) => {
 // ==== ★ ランキング取得とページネーション ====
 let globalRankingData = [];
 let currentRankingDisplayCount = 10;
+// ★ ランキングタブ：'all'（総合）または '1'〜'4'（ステージ別）
+let currentRankingTab = 'all';
+// ★ タブごとの取得結果キャッシュ（タブ切替のたびにGASへ問い合わせないため。送信成功時に破棄）
+let rankingCacheByTab = {};
+
+function setRankingTab(tab) {
+  currentRankingTab = tab;
+  document.querySelectorAll('#ranking-tabs .chart-tab').forEach(b => {
+    b.classList.toggle('active', b.dataset.rankStage === tab);
+  });
+  currentRankingDisplayCount = 10;
+  loadLeaderboard();
+}
 
 // ★ 他人が入力した名前をそのままinnerHTMLに挿入するとスクリプトを埋め込まれる恐れがある(XSS)ため、
 //   表示前に必ずHTMLとして無害化する
@@ -2054,17 +2255,37 @@ function loadLeaderboard() {
   const listEl = document.getElementById('global-ranking-list');
   if (!listEl) return;
 
-  fetch(GAS_URL)
+  const tab = currentRankingTab;
+
+  // ★ キャッシュがあれば即表示する（送信成功時にキャッシュは破棄される）
+  if (rankingCacheByTab[tab]) {
+    globalRankingData = rankingCacheByTab[tab];
+    renderLeaderboard();
+    return;
+  }
+
+  listEl.innerHTML = '<div style="color:#bdc3c7; text-align:center; font-size:0.9em;">読み込み中...</div>';
+
+  // ★ 総合はパラメータなし（旧GASとも互換）、ステージ別は ?stage=N を付けて取得する
+  const url = (tab === 'all') ? GAS_URL : (GAS_URL + '?stage=' + tab);
+
+  fetch(url)
     .then(response => response.json())
     .then(data => {
       // ★ GASが配列以外（エラーオブジェクト等）を返した場合に落ちないようガードする
-      globalRankingData = Array.isArray(data) ? data : [];
+      const arr = Array.isArray(data) ? data : [];
+      rankingCacheByTab[tab] = arr;
+      // ★ 取得中にユーザーが別のタブへ切り替えていたら、表示は上書きしない（キャッシュにだけ残す）
+      if (currentRankingTab !== tab) return;
+      globalRankingData = arr;
       currentRankingDisplayCount = 10;
       renderLeaderboard();
     })
     .catch(err => {
       console.error(err);
-      listEl.innerHTML = '<div style="text-align:center; color:#e74c3c;">ランキング取得エラー</div>';
+      if (currentRankingTab === tab) {
+        listEl.innerHTML = '<div style="text-align:center; color:#e74c3c;">ランキング取得エラー</div>';
+      }
     });
 }
 
@@ -2088,10 +2309,15 @@ function renderLeaderboard() {
     const safeName = escapeHtml(entry.name);
     const safeScore = escapeHtml(entry.score);
     const safeCombo = escapeHtml(entry.combo);
+    // ★ 新GASはエントリの達成ステージも返す。総合タブでどのステージの記録か分かるように表示する
+    //   （旧GAS・旧データはstageが無いため何も表示しない）
+    const stageTag = (entry.stage >= 1 && entry.stage <= 4)
+      ? ` <span style="font-size:0.65em; color:#f1c40f;">S${escapeHtml(entry.stage)}</span>`
+      : '';
 
     html += `<div style="display:flex; justify-content:space-between; background:rgba(255,255,255,0.05); padding:8px; margin-bottom:5px; border-radius:5px; align-items:center;">
                <div style="font-weight:bold; color:${rankColor}; width:30px; font-size:1.2em;">${rankIcon}</div>
-               <div style="flex-grow:1; text-align:left; font-weight:bold; word-break:break-all;">${safeName}</div>
+               <div style="flex-grow:1; text-align:left; font-weight:bold; word-break:break-all;">${safeName}${stageTag}</div>
                <div style="text-align:right;">
                  <span style="color:#1abc9c; font-weight:bold; font-size:1.1em;">${safeScore}</span><br>
                  <span style="font-size:0.7em; color:#95a5a6;">${safeCombo} Combo</span>
