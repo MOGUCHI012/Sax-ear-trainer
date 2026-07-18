@@ -58,15 +58,14 @@
       <div style="color:#bdc3c7; text-align:center; font-size:0.9em;">読み込み中...</div>
     </div>
     <button id="show-more-ranking-btn" class="link-btn" style="display:none; width:100%; margin-top:10px; font-size:0.85em; padding:6px;" onclick="showMoreRankings()">🔽 もっと見る</button>
-    
-    <h3 id="growth-chart-title" style="margin-top: 20px; font-size: 1.0em;">📈 STAGE1 の成長</h3>
-    <div class="chart-metric-tabs">
-      <button class="chart-tab active" data-metric="score" onclick="setChartMetric('score')">スコア</button>
-      <button class="chart-tab" data-metric="avgTime" onclick="setChartMetric('avgTime')">反応速度</button>
-      <button class="chart-tab" data-metric="accuracy" onclick="setChartMetric('accuracy')">正答率</button>
+
+    <!-- ★ 自己ベスト送信：リザルトで送信し損ねても、ここからいつでもステージ別ベストを送信できる -->
+    <div id="best-submit-section" style="display:none;">
+      <h3 style="margin-top: 20px; font-size: 1.0em;">📤 自己ベストをランキング送信</h3>
+      <input type="text" id="sidebar-player-name-input" class="score-name-input" placeholder="お名前 (10文字以内)" maxlength="10">
+      <div id="best-submit-list"></div>
+      <div id="sidebar-submit-status" class="score-submit-status"></div>
     </div>
-    <div id="growth-chart"></div>
-    <div id="growth-chart-summary"></div>
 
     <h3 style="margin-top: 20px; font-size: 1.0em;">🗒️ プレイ履歴</h3>
     <div id="history-list"></div>
@@ -103,24 +102,28 @@
         <div class="stage-card selected" id="stage-1-card" onpointerdown="event.preventDefault(); selectStage(1);">
           <div class="stage-badge">STAGE 1</div>
           <div class="stage-name">固定基準音・基本</div>
-          <div class="stage-desc">常に「ド」から出題。半音を含まないメジャースケールのみ。</div>
+          <div class="stage-rule-label">ルール</div>
+          <div class="stage-desc">基準音は常に「ド」。半音を含まないメジャースケールから出題。<br>スコア倍率 x1.0</div>
         </div>
         <div class="stage-card locked" id="stage-2-card" onpointerdown="event.preventDefault(); selectStage(2);">
           <div class="stage-badge">STAGE 2</div>
           <div class="stage-name">固定基準音・半音あり</div>
-          <div class="stage-desc">基準音は常に「ド」。黒鍵（半音・クロマチック）も出題範囲に。</div>
+          <div class="stage-rule-label">ルール</div>
+          <div class="stage-desc">基準音は常に「ド」。黒鍵（半音・クロマチック）も出題対象に。<br>スコア倍率 x1.8</div>
           <div class="lock-overlay" id="stage-2-lock-label">🔒 STAGE1で70,000点</div>
         </div>
         <div class="stage-card locked" id="stage-3-card" onpointerdown="event.preventDefault(); selectStage(3);">
           <div class="stage-badge">STAGE 3</div>
           <div class="stage-name">固定基準音・下行あり</div>
-          <div class="stage-desc">基準音は「ド」か「オクターブ上のド」。上のドの時は、そこから下の音が出題される。</div>
+          <div class="stage-rule-label">ルール</div>
+          <div class="stage-desc">基準音は「ド」か「オクターブ上のド」。上のドの時は、そこから下の音が出題。<br>スコア倍率 x2.0</div>
           <div class="lock-overlay" id="stage-3-lock-label">🔒 STAGE2で150,000点</div>
         </div>
         <div class="stage-card locked" id="stage-4-card" onpointerdown="event.preventDefault(); selectStage(4);">
           <div class="stage-badge">STAGE 4</div>
           <div class="stage-name">ランダム基準音</div>
-          <div class="stage-desc">基準音が毎回ランダム。半音を含む全音域から出題。</div>
+          <div class="stage-rule-label">ルール</div>
+          <div class="stage-desc">基準音が毎回ランダム。正解は鳴った音名そのもの。半音を含む全音域から出題。<br>スコア倍率 x2.8</div>
           <div class="lock-overlay" id="stage-4-lock-label">🔒 STAGE3で220,000点</div>
         </div>
       </div>
@@ -258,6 +261,17 @@
       </div>
       <button id="weak-notes-more-btn" class="link-btn" style="display:none; width:100%; margin-top:8px; font-size:0.8em; padding:6px;" onclick="showMoreWeakNotes()">🔽 もっと見る</button>
     </div>
+    <!-- ★ 成長グラフ：PCで右下が空いていたため、左サイドバーからここ（右サイドバー下部）へ移設 -->
+    <div class="analytics-box" id="growth-section">
+      <h4 id="growth-chart-title">📈 STAGE1 の成長</h4>
+      <div class="chart-metric-tabs">
+        <button class="chart-tab active" data-metric="score" onclick="setChartMetric('score')">スコア</button>
+        <button class="chart-tab" data-metric="avgTime" onclick="setChartMetric('avgTime')">反応速度</button>
+        <button class="chart-tab" data-metric="accuracy" onclick="setChartMetric('accuracy')">正答率</button>
+      </div>
+      <div id="growth-chart"></div>
+      <div id="growth-chart-summary"></div>
+    </div>
   </div>
 </div>
  
@@ -265,33 +279,34 @@
   <div class="modal-content">
     <h3>📖 くわしいルール</h3>
     <div class="rule-box">
-      ・<strong>3連続正解</strong>で開放音が<strong>2つ</strong>増え、ミスすると<strong>1つ</strong>減ります。<br>
+      <div class="rule-section-title">🎮 基本ルール</div>
+      ・基準音のあとに問題音が鳴ります。正しい鍵盤を素早く押しましょう。<br>
+      ・<strong>3連続正解</strong>で出題される音が<strong>2つ</strong>増え、ミスすると<strong>1つ</strong>減ります。<br>
       ・間違えた時は<strong>正解の鍵盤が緑色</strong>に光ります。<br>
-      ・<strong>オクターブは区別しません。</strong>出題が「ド↑」でも1オクターブ低い「ド」を押せば正解になります（実践的な音感トレーニングのため）。<br>
-      ・コンボ判定の反応時間はお使いの端末に応じて自動調整されます（PC: 1.0秒 / Android: 1.2秒 / iOS: 1.3秒）。<br>
-      ・9コンボ以降は<strong>3コンボごとに+4秒</strong>のボーナスも発生します。<br>
-      ・<strong>コンボが続くほど背景が熱く変化</strong>し、3コンボごとに専用の<strong>レベルアップ音</strong>が鳴ります。<br>
-      ・出題音・基準音はサックス風の音色でシンセサイズされています🎷<br>
-      ・<strong>ゲーム終了後も鍵盤は鳴らせます。</strong>スコアに影響しないので音の確認に自由に使えます。<br>
-      ・<strong>STAGE 1</strong>：基準音は常に「ド」。半音を含まないメジャースケールのみが出題されます。<br>
-      ・<strong>STAGE 2</strong>：基準音は常に「ド」のまま、黒鍵（半音・クロマチック）も出題されるようになります。<strong>STAGE1で70,000点</strong>を出すと解放。<br>
-      ・<strong>STAGE 3</strong>：基準音が「ド」または「オクターブ上のド↑」の2種類になります。上のド↑が基準の時は、そこから<strong>下の音</strong>が出題されます（下行音程のトレーニング）。<strong>STAGE2で150,000点</strong>を出すと解放。<br>
-      ・<strong>STAGE 4</strong>：基準音が毎回ランダムになりますが、問題音は常に鳴った音名そのものが正解です（惑わされないように！）。半音を含む全音域が対象。<strong>STAGE3で220,000点</strong>を出すと解放。<br>
-      ・STAGE 2以降は難易度が高い分、<strong>獲得スコアに補正倍率</strong>がかかります（STAGE2: x1.8 / STAGE3: x2.0 / STAGE4: x2.8）。<br>
+      ・<strong>オクターブは区別しません。</strong>出題が「ド↑」でも1オクターブ低い「ド」を押せば正解です。<br>
       ・STAGE 3・4では基準音が鳴る際、<strong>対象の鍵盤が黄色く光り</strong>、テキストでも音名をお知らせします。<br>
-      ・「苦手な音」ランキングは<strong>ステージごとに別々に集計</strong>されます。STAGE 4のみ、苦手な音ではなく<strong>苦手な音程（跳躍）</strong>のランキングが表示されます。<br>
-      ・<strong>PCでの半音入力</strong>：ヘッダーの「半音入力」設定で2つの方式を選べます。<br>
-      　－<strong>専用キー(推奨)</strong>：W, E, T, Y, U などが独立した黒鍵として機能します（DAWのピアノ配列風）。<br>
-      　－<strong>修飾キー(Space)</strong>：<strong>スペースキーを押しながら</strong>白鍵のキーを押すと、その半音になります（例：Space+Aキー＝Db）。<br>
-      　どちらの方式でも、プレイ中・フリープレイの両方で使えます。<br>
-      ・スタート／もう一度プレイのショートカットは<strong>Enterキー</strong>です（Spaceキーとは競合しません）。<br>
-      ・ヘッダーの「表記」設定で、鍵盤や苦手な音ランキングの音名表示を「ドレミ」⇔「CDE」に切り替えられます。<br>
-      ・「⌨️ キー割り当てをカスタマイズ」からPC用のキー配置を自由に変更できます。<br>
-      ・スマホは横画面推奨ですが、縦画面のままでもプレイできます。<br>
-      ・<strong>自己ベストを更新すると</strong>、ゲーム終了時に名前を入力して部内ランキングにスコアを送信できます（鍵盤はそのまま操作できます）。<br>
-      ・ベストスコアは<strong>ステージごとに別々に記録</strong>されます。ランキングへの送信も、そのステージでの自己ベストを更新した時に可能です。<br>
-      ・<strong>🎯 苦手特訓モード</strong>：ONにすると、そのステージであなたが苦手な音に絞って出題されます。集中的に弱点を潰したい時にどうぞ。スコア計算は通常通りですが、<strong>自己ベストの更新とランキング送信の対象外</strong>になります。<br>
-      ・プレイ終了後のリザルトに、<strong>今回ミスした音のワースト3</strong>が表示されます。次のプレイの狙いどころにしてください。
+      ・各ステージの出題範囲・スコア倍率・解放条件は、スタート画面の<strong>各ステージカードの「ルール」欄</strong>をご覧ください。<br>
+      <div class="rule-section-title">⚡ スコアとコンボ</div>
+      ・速く答えるほど高得点。素早い正解が続くと<strong>コンボ</strong>が発生し、得点倍率が上がります。<br>
+      ・コンボ判定の猶予時間は端末に応じて自動調整されます（PC: 1.0秒 / Android: 1.2秒 / iOS: 1.3秒）。<br>
+      ・3コンボごとに<strong>残り時間ボーナス</strong>（+2〜4秒）が発生します。<br>
+      ・<strong>5連続正解ごと</strong>に固定ボーナス<strong>+1,000点×ステージ倍率</strong>を獲得できます（コンボ倍率の影響は受けません）。<br>
+      <div class="rule-section-title">⌨️ PCでの操作</div>
+      ・スタート／もう一度プレイのショートカットは<strong>Enterキー</strong>です。<br>
+      ・半音（黒鍵）の入力は2方式から選べます。ヘッダーの「半音入力」で切り替えてください。<br>
+      　－<strong>専用キー(推奨)</strong>：W, E, T, Y, U などが独立した黒鍵として機能します。<br>
+      　－<strong>修飾キー(Space)</strong>：<strong>スペースキーを押しながら</strong>白鍵のキーで、その半音になります（例：Space+A＝Db）。<br>
+      ・「⌨️ キー割り当てをカスタマイズ」からキー配置を自由に変更できます。<br>
+      ・ヘッダーの「表記」設定で、音名表示を「ドレミ」⇔「CDE」に切り替えられます。<br>
+      <div class="rule-section-title">📊 記録とランキング</div>
+      ・ベストスコアは<strong>ステージごとに別々に記録</strong>されます。<br>
+      ・そのステージの自己ベストを更新すると、名前を入力して<strong>部内ランキング</strong>にスコアを送信できます。<br>
+      ・「苦手な音」ランキングもステージごとに集計されます。STAGE 4のみ<strong>苦手な音程（跳躍）</strong>で集計。<br>
+      ・<strong>🎯 苦手特訓モード</strong>：あなたが苦手な音に絞って出題されます。<strong>自己ベスト更新・ランキング送信の対象外</strong>です。<br>
+      ・プレイ終了後のリザルトに<strong>今回ミスした音のワースト3</strong>が表示されます。次の狙いどころにどうぞ。<br>
+      <div class="rule-section-title">💡 その他</div>
+      ・<strong>ゲーム終了後も鍵盤は鳴らせます。</strong>スコアに影響しないので音の確認に自由に使えます。<br>
+      ・スマホは横画面推奨ですが、縦画面のままでもプレイできます。
     </div>
     <button class="action-btn" onpointerdown="event.preventDefault(); closeRulesModal();" style="width:100%;">閉じる</button>
   </div>

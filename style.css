@@ -46,6 +46,8 @@ html.no-scroll, body.no-scroll { overscroll-behavior: none; }
 
 .analytics-box { background: rgba(0,0,0,0.2); padding: 10px; border-radius: 8px; margin-top: 20px; text-align: left;}
 .analytics-box h4 { margin: 0 0 10px 0; color: #e74c3c; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px; font-size: 1em;}
+/* ★ 成長グラフセクション（右サイドバー下部）。苦手な音の赤見出しと区別するため緑系にする */
+#growth-section h4 { color: #1abc9c; }
 .weak-note-item { display: flex; justify-content: space-between; font-size: 0.85em; margin-bottom: 5px; background: rgba(231, 76, 60, 0.2); padding: 5px; border-radius: 3px;}
 
 .header-section { display: flex; justify-content: center; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
@@ -60,6 +62,12 @@ select.game-setting { padding: 8px; font-size: 0.9em; border-radius: 5px; border
 
 .rule-box { background: rgba(255, 255, 255, 0.1); padding: 10px; border-radius: 5px; font-size: 0.9em; margin-bottom: 15px; text-align: left; line-height: 1.5; }
 .rule-box strong { color: #f1c40f; }
+/* ★ ルールモーダル内のセクション見出し（可読性向上のため項目をカテゴリ分けして表示する） */
+.rule-section-title {
+  color: #1abc9c; font-weight: bold; font-size: 0.95em;
+  margin: 12px 0 5px 0; padding-bottom: 3px; border-bottom: 1px dashed rgba(26,188,156,0.4);
+}
+.rule-box .rule-section-title:first-child { margin-top: 0; }
 
 .keys { display: flex; justify-content: center; margin-top: 15px; gap: 0; padding: 0 5px; }
 
@@ -119,8 +127,10 @@ select.game-setting { padding: 8px; font-size: 0.9em; border-radius: 5px; border
   #app-container { flex-direction: column; }
   #history-sidebar { order: 3; max-height: 250px; }
   #main-game-board { order: 1; }
-  #analytics-sidebar { order: 2; display: flex; justify-content: space-between; align-items: stretch; text-align: left;}
+  #analytics-sidebar { order: 2; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: stretch; text-align: left;}
   .analytics-box { margin-top: 0; flex: 1; margin-left: 15px; }
+  /* ★ 成長グラフはコンボ・苦手な音と横並びにすると潰れるため、折り返して全幅で表示する */
+  #growth-section { flex: 1 1 100%; margin-left: 0; margin-top: 15px; }
   #combo-container { flex: 1; text-align: center; }
   .key-group { max-width: none; }
   .key { width: 100%; height: 120px; font-size: 0.85em; }
@@ -133,7 +143,10 @@ select.game-setting { padding: 8px; font-size: 0.9em; border-radius: 5px; border
   display: none; align-items: center; gap: 4px; font-weight: bold; color: #f1c40f;
 }
 
-#game-message-area { margin-top: 15px; font-size: 1.1em; font-weight: bold; min-height: 46px; line-height: 1.4; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px; }
+/* ★ flexレイアウト指定はHTMLのインラインstyleからここへ移動した。
+   インラインのままだとメディアクエリで justify-content を上書きできず、
+   横画面のオーバーフロー対策（下記）が効かないため。 */
+#game-message-area { margin-top: 15px; font-size: 1.1em; font-weight: bold; min-height: 46px; line-height: 1.4; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 button.action-btn { padding: 15px 30px; font-size: 1.2em; background-color: #e74c3c; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; box-shadow: 0 4px #c0392b; touch-action: manipulation; margin-bottom: 10px; }
 .flash-green { background-color: #27ae60 !important; }
 .flash-red { background-color: #c0392b !important; }
@@ -149,6 +162,16 @@ button.action-btn { padding: 15px 30px; font-size: 1.2em; background-color: #e74
 }
 .score-name-input:focus { outline: none; border-color: #f1c40f; background: #fff9e6; }
 .score-submit-status { min-height: 18px; font-size: 0.85em; margin-top: 8px; color: #2ecc71; }
+
+/* ==== ★ サイドバーの「自己ベスト送信」セクション ==== */
+#best-submit-section .score-name-input { margin-bottom: 8px; font-size: 0.9em; padding: 8px; }
+.best-submit-row {
+  display: flex; justify-content: space-between; align-items: center;
+  background: rgba(255,255,255,0.06); padding: 6px 8px; border-radius: 5px; margin-bottom: 6px;
+}
+.best-submit-row strong { color: #1abc9c; }
+.best-submit-btn { margin-bottom: 0; padding: 5px 12px; font-size: 0.8em; }
+.best-submit-done { color: #2ecc71; font-size: 0.8em; font-weight: bold; }
 
 /* ==== ★ スタート画面（タイトル画面）==== */
 #start-screen { text-align: center; }
@@ -187,6 +210,11 @@ button.action-btn { padding: 15px 30px; font-size: 1.2em; background-color: #e74
 .stage-badge { font-size: 0.75em; font-weight: 900; letter-spacing: 1px; color: #f1c40f; margin-bottom: 4px; }
 .stage-name { font-size: 1.15em; font-weight: bold; margin-bottom: 6px; }
 .stage-desc { font-size: 0.8em; color: #bdc3c7; line-height: 1.4; }
+/* ★ ステージカード内の「ルール」小見出し。ルール詳細はモーダルではなく各カードに記載する方針 */
+.stage-rule-label {
+  font-size: 0.62em; font-weight: 900; color: #1abc9c; letter-spacing: 2px;
+  margin: 8px 0 3px 0; padding-top: 6px; border-top: 1px dashed rgba(255,255,255,0.15);
+}
 .stage-card.locked { cursor: not-allowed; opacity: 0.55; filter: grayscale(0.6); }
 .stage-card.locked:active { transform: none; }
 .lock-overlay {
@@ -286,6 +314,8 @@ button.action-btn { padding: 15px 30px; font-size: 1.2em; background-color: #e74
 .result-actions { display: flex; gap: 8px; justify-content: center; align-items: center; flex-wrap: wrap; margin: 4px 0 8px 0; }
 .result-actions .action-btn { margin-bottom: 0; }
 .result-actions .link-btn { margin-bottom: 0; }
+/* ★ 誤タップ防止：リザルト表示直後の無効化中は薄く表示して「まだ押せない」ことを伝える */
+.result-actions .action-btn:disabled, .result-actions .link-btn:disabled { opacity: 0.4; cursor: default; }
 
 .session-weak-box {
   background: rgba(231, 76, 60, 0.12); border: 1px solid rgba(231, 76, 60, 0.4);
@@ -361,14 +391,20 @@ button.action-btn { padding: 15px 30px; font-size: 1.2em; background-color: #e74
   .stage-card { padding: 8px; min-width: 100px; }
   .stage-name { font-size: 1em; }
   .stage-desc { font-size: 0.72em; }
+  /* ★ カードにルール欄を追加した分、横画面では小見出しを詰めて高さを抑える */
+  .stage-rule-label { font-size: 0.56em; margin: 5px 0 2px 0; padding-top: 4px; }
   .stats-bar, .sub-stats-bar { font-size: 0.8em; margin-bottom: 4px; }
   /* ★ サイドバーを隠す代わりに、コンボ数をゲーム画面内に表示する */
   #combo-inline-stat { display: inline-flex !important; }
   /* ★ 正誤メッセージは音と光で伝わるため1行に簡略化済み。その分ここも詰める */
   #game-message-area { font-size: 0.9em; min-height: 30px; padding-top: 4px; margin-top: 4px; border-top: none; }
   /* ★ リザルト表示で内容が増えても鍵盤が画面外へ押し出されないよう、高さを制限してスクロールさせる。
-        操作ボタンはリザルト上部にあるので、スクロールせずに「もう一度プレイ」を押せる。 */
-  #game-message-area { max-height: 40vh; overflow-y: auto; }
+        操作ボタンはリザルト上部にあるので、スクロールせずに「もう一度プレイ」を押せる。
+     ★★ justify-content:center のまま overflow させると、flexboxの仕様であふれた「上側」が
+        スクロールしても到達できない領域になり、リザルト上部の「もう一度プレイ」「ステージ選択」
+        ボタンが押せなくなるバグがあった（自己ベスト時など内容が多い時に発生）。
+        flex-start にして必ず上端から表示・スクロールできるようにする。 ★★ */
+  #game-message-area { max-height: 40vh; overflow-y: auto; justify-content: flex-start; }
   .result-score-line { font-size: 1em; }
   .rank-display { font-size: 1em; margin: 4px 0; padding: 5px; }
   .result-actions .action-btn { padding: 8px 16px; font-size: 0.92em; }

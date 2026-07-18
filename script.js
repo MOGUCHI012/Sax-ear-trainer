@@ -159,27 +159,54 @@ function updateBgmToggleUI() {
   btn.classList.toggle('bgm-off', !bgmEnabled);
 }
 
-// ==== ★ バックグラウンド移行時のBGM停止（バグ修正）====
-// スマホでタブを閉じたり他アプリへ切り替えたり画面をロックしたりしても
+// ==== ★ バックグラウンド移行時のBGM停止（バグ修正・強化版）====
+// スマホで別アプリへ切り替えたり、タブを閉じたり、画面をロックしたりしても
 // <audio>の再生が続き、BGMが鳴り止まない問題への対策。
-// 画面が隠れたら必ずpauseし、復帰時は「隠れる直前に再生中だった場合」だけ再開する
-// （ユーザーがOFFにしている場合に勝手に鳴り出さないようにするため）。
-// ※ゲーム中はmuted再生で音声セッションを維持しているため、復帰時もそのまま再開してよい
-//   （mutedの状態はpause/playをまたいで保持される）。
+// iOS（特にホーム画面から起動したPWA）では visibilitychange がアプリ切替時に
+// 発火しないケースが報告されているため、以下の4系統すべてで停止を試みる多重防御にする：
+//   1. visibilitychange（標準的なタブ/アプリ切替）
+//   2. pagehide / pageshow（iOS Safariのタブクローズ・ページ遷移）
+//   3. freeze（Page Lifecycle API：Android Chrome等のバックグラウンド凍結）
+//   4. window blur / focus（モバイル限定。iOS PWAでのアプリ切替の最後の砦）
+// 復帰時は「隠れる直前に再生中だった場合」だけ再開する（OFF設定を勝手に覆さないため）。
+// ※複数のイベントが連続発火すると「pause済み＝再生していなかった」と誤記録してしまうため、
+//   bgmPausedByBackground フラグで最初の1回の状態だけを記録する。
+// ※ゲーム中はmuted再生で音声セッションを維持しているが、mutedの状態は
+//   pause/playをまたいで保持されるので、そのまま止めて・そのまま再開してよい。
 let bgmWasPlayingBeforeHidden = false;
+let bgmPausedByBackground = false;
+
 function pauseBgmForBackground() {
-  bgmWasPlayingBeforeHidden = !bgmAudio.paused;
+  if (!bgmPausedByBackground) {
+    bgmWasPlayingBeforeHidden = !bgmAudio.paused;
+    bgmPausedByBackground = true;
+  }
   bgmAudio.pause();
 }
+function resumeBgmFromBackground() {
+  if (!bgmPausedByBackground) return;
+  bgmPausedByBackground = false;
+  if (bgmWasPlayingBeforeHidden) bgmAudio.play().catch(() => {});
+}
+
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) {
-    pauseBgmForBackground();
-  } else if (bgmWasPlayingBeforeHidden) {
-    bgmAudio.play().catch(() => {});
-  }
+  if (document.hidden) pauseBgmForBackground();
+  else resumeBgmFromBackground();
 });
-// ★ iOS Safariはタブを閉じる際にvisibilitychangeが発火しないことがあるため、pagehideでも止める
 window.addEventListener('pagehide', pauseBgmForBackground);
+window.addEventListener('pageshow', resumeBgmFromBackground);
+document.addEventListener('freeze', pauseBgmForBackground);
+// ★ blur/focusはモバイルのみ対象にする。PCではウィンドウを切り替えるたびに
+//   BGMが止まると煩わしいため。deviceTypeは後方で宣言されるconstだが、
+//   コールバックの実行はスクリプト評価完了後なのでTDZの問題は起きない。
+window.addEventListener('blur', () => {
+  if (deviceType === 'pc') return;
+  pauseBgmForBackground();
+});
+window.addEventListener('focus', () => {
+  if (deviceType === 'pc') return;
+  resumeBgmFromBackground();
+});
 
 // ==== ★ 苦手音 集中特訓モードのトグル ====
 // ONにすると、そのステージで苦手な音に絞って出題される。
@@ -386,6 +413,24 @@ function getOverallBestScore() {
   return Math.max(bestScoreByStage[1], bestScoreByStage[2], bestScoreByStage[3], bestScoreByStage[4] || 0);
 }
 
+// ==== ★ ランキング送信の取りこぼし防止（ステージ別）====
+// 「自己ベスト更新の瞬間に送信し損ねると二度と送信できない」問題への対策。
+//   ・submittedBestByStage: ランキングへ送信済みのベストスコア
+//   ・bestComboByStage: 自己ベスト達成時の最大コンボ（未送信ベストを後から送る際に必要）
+// 自己ベスト > 送信済みベスト である間は、毎回のリザルトで送信UIを出し続けることで、
+// 誤タップ・ブラウザ終了・通信失敗などで送信し損ねても、次のプレイ後に再送信できる。
+function loadStageNumberMap(key) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(key));
+    if (saved && typeof saved === 'object') {
+      return { 1: saved[1] || 0, 2: saved[2] || 0, 3: saved[3] || 0, 4: saved[4] || 0 };
+    }
+  } catch (e) { /* 壊れたデータは無視 */ }
+  return { 1: 0, 2: 0, 3: 0, 4: 0 };
+}
+let submittedBestByStage = loadStageNumberMap('saxEarTrainSubmittedBestByStage');
+let bestComboByStage = loadStageNumberMap('saxEarTrainBestComboByStage');
+
 // ==== ★ 外部送信（GAS/Discord）設定 ====
 // TODO: Discord Webhook URLを実際の値に置き換えてください
 const GAS_URL = "https://script.google.com/macros/s/AKfycbzgR5pfOXgsSkY9HfQ0bEjd33iDNEYZD-z07rOtSAXBCnm7u_rRqvFnqgib_niUr2_kEg/exec";
@@ -410,6 +455,14 @@ const MAX_TIME_LEFT = 45;
 // ★ 万一の異常発生に備えた絶対的なフェイルセーフ。ゲーム開始から一定時間で必ず終了させる。
 const MAX_GAME_DURATION_MS = 180000; // 3分
 let gameStartTimestamp = 0;
+
+// ★ リザルト表示直後の誤タップ防止時間。
+//   ゲーム終了の瞬間まで鍵盤を連打していると、直前まで鍵盤があった位置に出現した
+//   「もう一度プレイ」を誤って押してしまい、ランキング送信の機会を失う事故があったため、
+//   リザルト表示から一定時間は操作ボタン（もう一度プレイ／ステージ選択）を無効化する。
+//   Enterキーによる再スタートも同じ時間だけブロックする（startSequence側で判定）。
+const RESULT_TAP_GUARD_MS = 1000;
+let resultGuardUntil = 0;
 const COMBO_TIME_THRESHOLD = COMBO_TIME_THRESHOLDS[deviceType];
 const DEVICE_LABELS = { ios: '📱 iOS (猶予1300ms)', android: '🤖 Android (猶予1200ms)', pc: '💻 PC (猶予1000ms)' };
 
@@ -654,6 +707,7 @@ function returnToStartScreen() {
   document.body.classList.remove('hide-sidebars');
   unlockBodyScroll();
   renderStageLockState();
+  renderBestSubmitSection(); // ★ 直前のプレイでベストが更新されていれば送信欄に反映する
   playBGM();
 }
 
@@ -805,6 +859,8 @@ function handlePracticePianoKeydown(e, key) {
 
 function startSequence() {
   if (isPlayingGame || isCountingDown) return;
+  // ★ リザルト表示直後の誤操作（連打の残りタップ・誤Enter）で即再スタートしないようにする
+  if (Date.now() < resultGuardUntil) return;
   isCountingDown = true;
   lockBodyScroll(); // ★ 「もう一度プレイ」経由の場合もここでロック
 
@@ -1035,6 +1091,19 @@ function checkAnswer(answerNote) {
     let stageMultiplier = STAGE_SCORE_MULTIPLIERS[currentStage] || 1.0;
     basePoints = Math.floor(basePoints * difficultyMultiplier * stageMultiplier);
 
+    // ★ 連続正解(streak)ボーナス：5連続ごとに固定 +1,000点×ステージ倍率。
+    //   「速さのコンボ」に対する「正確さへのご褒美」なので、コンボの速度倍率や
+    //   開放音数の難易度倍率の影響は一切受けない固定加点とする。
+    //   時間は追加しない（時間を配るとゲームが延びて3分上限管理と相性が悪いため）。
+    let streakBonus = 0;
+    if (streak > 0 && streak % 5 === 0) {
+      streakBonus = Math.floor(1000 * stageMultiplier);
+      score += streakBonus;
+    }
+    const streakBonusHTML = (streakBonus > 0)
+      ? ` <span style="color:#2ecc71;">🎯${streak}連続 +${streakBonus}点</span>`
+      : '';
+
     let msgHTML = `+${basePoints}点`;
     
     if (responseTime <= COMBO_TIME_THRESHOLD) {
@@ -1062,7 +1131,9 @@ function checkAnswer(answerNote) {
     }
     
     updateStats();
-    document.getElementById('game-message-area').innerHTML = msgHTML;
+    // ★ #game-message-area は flex-direction:column のため、加点表示とボーナス表示が
+    //   別々の行に分かれないよう、1つの<div>にまとめて1行で表示する。
+    document.getElementById('game-message-area').innerHTML = `<div>${msgHTML}${streakBonusHTML}</div>`;
     const correctBtn = document.getElementById('note-'+answerNote);
     if(correctBtn) { correctBtn.classList.add('correct-highlight'); setTimeout(() => correctBtn.classList.remove('correct-highlight'), 300); }
     setTimeout(nextQuestion, 500);
@@ -1318,6 +1389,10 @@ function updateHistoryUI() {
 
 // ★ 今回のプレイで間違えた音／音程のワースト3を、リザルト用のHTMLとして生成する
 function buildSessionWeaknessHTML() {
+  // ★ 1問も回答していない場合（0点のまま終了など）は何も表示しない。
+  //   回答ゼロなのに「ノーミス！」と褒めてしまうのは不自然なため。
+  if (sessionAnsweredCount === 0) return '';
+
   const entries = Object.keys(sessionMistakes)
     .map(key => ({ key, count: sessionMistakes[key] }))
     .sort((a, b) => b.count - a.count)
@@ -1389,6 +1464,9 @@ function endGame() {
   if (isNewBest) {
     bestScoreByStage[currentStage] = score;
     localStorage.setItem('saxEarTrainBestScoreByStage', JSON.stringify(bestScoreByStage));
+    // ★ ベスト達成時の最大コンボも保存する（未送信ベストを後から送信する際に必要）
+    bestComboByStage[currentStage] = finalCombo;
+    localStorage.setItem('saxEarTrainBestComboByStage', JSON.stringify(bestComboByStage));
   }
   renderStageLockState();
   updateGameStatusLine();
@@ -1412,10 +1490,12 @@ function endGame() {
 
   // ★★★ 操作ボタンはリザルトの「上部」に置く。
   //     スマホ横画面では画面が狭く、弱点サマリー等を先に置くと「もう一度プレイ」が
-  //     画面外に押し出されて連続プレイの妨げになるため。 ★★★
+  //     画面外に押し出されて連続プレイの妨げになるため。
+  //     また、終了直前まで鍵盤を連打していた指の誤タップを吸収するため、
+  //     表示直後はdisabledにしてRESULT_TAP_GUARD_MS後に有効化する。 ★★★
   endMsg += `<div class="result-actions">`;
-  endMsg += `<button class="action-btn" onclick="startSequence()">もう一度プレイ <small>(Enter)</small></button>`;
-  endMsg += `<button class="link-btn" onclick="returnToStartScreen();">🔁 ステージ選択</button>`;
+  endMsg += `<button class="action-btn result-guard-btn" disabled onclick="startSequence()">もう一度プレイ <small>(Enter)</small></button>`;
+  endMsg += `<button class="link-btn result-guard-btn" disabled onclick="returnToStartScreen();">🔁 ステージ選択</button>`;
   endMsg += `</div>`;
 
   justUnlockedStages.forEach(n => {
@@ -1423,13 +1503,17 @@ function endGame() {
   });
 
   // ★★★ ランキング送信UIはフルスクリーンモーダルではなく、メッセージエリア内に直接埋め込む。
-  //     こうすることで、下の鍵盤（フリープレイ用ピアノ）が隠れず、常に操作できる。 ★★★
+  //     こうすることで、下の鍵盤（フリープレイ用ピアノ）が隠れず、常に操作できる。
+  //     表示するのは「自己ベストを更新したそのリザルト」のみ。
+  //     ※以前は未送信ベストがある限り毎回表示していたが、煩わしいためやめた。
+  //       送信し損ねた場合は、スタート画面サイドバーの「📤 自己ベストをランキング送信」から
+  //       いつでも送信できる（そちらが救済経路）。 ★★★
   if (isNewBest) {
     endMsg += `<div style="color:#f1c40f; font-weight:bold; margin-top:6px;">🎉 STAGE${currentStage} 自己ベスト更新！ランキングに記録しよう</div>`;
     endMsg += `
       <div class="score-submit-box">
         <input type="text" id="player-name-input" class="score-name-input" placeholder="お名前を入力 (10文字以内)" maxlength="10">
-        <button id="submit-score-btn" class="action-btn" onclick="submitScore(${score}, ${finalCombo})" style="width:100%; margin-top:8px;">📤 ランキングにスコアを送信</button>
+        <button id="submit-score-btn" class="action-btn" onclick="submitScore(${score}, ${finalCombo}, ${currentStage})" style="width:100%; margin-top:8px;">📤 ランキングにスコアを送信</button>
         <div id="submit-status-msg" class="score-submit-status"></div>
       </div>`;
   }
@@ -1445,6 +1529,13 @@ function endGame() {
   endMsg += `<div style="font-size:0.8em; color:#1abc9c; margin: 8px 0;">🎹 下の鍵盤はそのまま鳴らせます。ピッチ確認にどうぞ。</div>`;
 
   document.getElementById('game-message-area').innerHTML = endMsg;
+
+  // ★ 誤タップ防止ガード：表示直後は操作ボタンを無効化し、一定時間後に有効化する。
+  //   Enterキーによる再スタートはstartSequence側でresultGuardUntilを見てブロックされる。
+  resultGuardUntil = Date.now() + RESULT_TAP_GUARD_MS;
+  setTimeout(() => {
+    document.querySelectorAll('.result-guard-btn').forEach(b => { b.disabled = false; });
+  }, RESULT_TAP_GUARD_MS);
 
   if (isNewBest) {
     const nameInput = document.getElementById('player-name-input');
@@ -1470,17 +1561,8 @@ function getOrCreateDeviceId() {
   return id;
 }
 
-function submitScore(finalScore, finalCombo) {
-  const statusEl = document.getElementById('submit-status-msg');
-  const nameInput = document.getElementById('player-name-input');
-  const submitBtn = document.getElementById('submit-score-btn');
-  const playerName = nameInput ? nameInput.value.trim() : '';
-
-  if (!playerName) {
-    if (statusEl) statusEl.innerText = '⚠️ 名前を入力してください';
-    return;
-  }
-
+// ★ ランキング送信の共通処理。リザルト画面とサイドバー「自己ベスト送信」の両方から使う。
+function sendScoreToRanking(playerName, finalScore, finalCombo, stageNum, statusEl, submitBtn) {
   // ★ 次回以降のためにプレイヤー名を保存（キー名の誤字を修正: saxEarTrainerName → saxEarTrainPlayerName）
   localStorage.setItem('saxEarTrainPlayerName', playerName);
 
@@ -1495,6 +1577,10 @@ function submitScore(finalScore, finalCombo) {
   })
   .then(() => {
     if (statusEl) statusEl.innerText = '✅ 送信完了！ランキングを更新しました';
+    // ★ 送信済みベストを記録し、サイドバーで「✅ 送信済み」と表示できるようにする
+    submittedBestByStage[stageNum] = Math.max(submittedBestByStage[stageNum] || 0, finalScore);
+    localStorage.setItem('saxEarTrainSubmittedBestByStage', JSON.stringify(submittedBestByStage));
+    renderBestSubmitSection();
     if (typeof loadLeaderboard === 'function') loadLeaderboard();
   })
   .catch(err => {
@@ -1517,6 +1603,70 @@ function submitScore(finalScore, finalCombo) {
       console.error('Discordへの通知に失敗しました:', err);
     });
   }
+}
+
+// ★ リザルト画面の送信ボタン用（自己ベスト更新時のみ表示される）
+function submitScore(finalScore, finalCombo, stageNum) {
+  stageNum = stageNum || currentStage;
+  const statusEl = document.getElementById('submit-status-msg');
+  const nameInput = document.getElementById('player-name-input');
+  const playerName = nameInput ? nameInput.value.trim() : '';
+
+  if (!playerName) {
+    if (statusEl) statusEl.innerText = '⚠️ 名前を入力してください';
+    return;
+  }
+  sendScoreToRanking(playerName, finalScore, finalCombo, stageNum, statusEl, document.getElementById('submit-score-btn'));
+}
+
+// ==== ★ サイドバー「📤 自己ベストをランキング送信」====
+// リザルトで送信し損ねた（誤タップ・通信失敗・閉じ忘れ等）場合の救済経路。
+// ベストが記録されているステージを一覧表示し、未送信のものは送信ボタン、
+// 送信済みのものは「✅ 送信済み」を表示する。ベストが1つも無ければセクション自体を隠す。
+function renderBestSubmitSection() {
+  const section = document.getElementById('best-submit-section');
+  const listEl = document.getElementById('best-submit-list');
+  if (!section || !listEl) return;
+
+  const stagesWithBest = [1, 2, 3, 4].filter(n => (bestScoreByStage[n] || 0) > 0);
+  if (stagesWithBest.length === 0) {
+    section.style.display = 'none';
+    return;
+  }
+  section.style.display = 'block';
+
+  let html = '';
+  stagesWithBest.forEach(n => {
+    const best = bestScoreByStage[n];
+    const isSubmitted = (submittedBestByStage[n] || 0) >= best;
+    html += `<div class="best-submit-row"><span>STAGE${n}: <strong>${best}</strong>点</span>`;
+    html += isSubmitted
+      ? `<span class="best-submit-done">✅ 送信済み</span>`
+      : `<button id="sidebar-submit-btn-${n}" class="link-btn best-submit-btn" onclick="submitBestFromSidebar(${n})">📤 送信</button>`;
+    html += `</div>`;
+  });
+  listEl.innerHTML = html;
+
+  // ★ 名前欄が空なら保存済みのプレイヤー名を事前入力する（入力途中の値は上書きしない）
+  const nameInput = document.getElementById('sidebar-player-name-input');
+  if (nameInput && !nameInput.value) {
+    nameInput.value = localStorage.getItem('saxEarTrainPlayerName') || '';
+  }
+}
+
+function submitBestFromSidebar(stageNum) {
+  const best = bestScoreByStage[stageNum] || 0;
+  if (best <= 0) return;
+
+  const statusEl = document.getElementById('sidebar-submit-status');
+  const nameInput = document.getElementById('sidebar-player-name-input');
+  const playerName = nameInput ? nameInput.value.trim() : '';
+
+  if (!playerName) {
+    if (statusEl) statusEl.innerText = '⚠️ 名前を入力してください';
+    return;
+  }
+  sendScoreToRanking(playerName, best, bestComboByStage[stageNum] || 0, stageNum, statusEl, document.getElementById('sidebar-submit-btn-' + stageNum));
 }
 
 // ==== ★ PC用キー割り当て（カスタマイズ可能）====
@@ -1691,6 +1841,13 @@ let isSpaceHeld = false;
 
 window.addEventListener('keydown', (e) => {
   const key = e.key.toLowerCase();
+
+  // ★ 入力欄（名前入力・キー割り当て・セレクト等）にフォーカスがある間は、
+  //   ゲーム用のキー処理を一切行わない。
+  //   （従来は文字キーにこのガードが無く、リザルトの名前入力・サイドバーの名前入力・
+  //     キー割り当てモーダルでの入力中に、割り当てキーと一致すると鍵盤の音が鳴っていた）
+  const focusTag = document.activeElement ? document.activeElement.tagName : '';
+  if (focusTag === 'INPUT' || focusTag === 'TEXTAREA' || focusTag === 'SELECT') return;
 
   // ★ 練習用ピアノ画面が表示中は、専用のキー入力ロジックに完全に委譲する（本編の判定は行わない）
   const practiceScreenVisible = document.getElementById('practice-piano-screen').style.display !== 'none';
@@ -1878,6 +2035,7 @@ function initApp() {
   renderStageLockState();
   updateGameStatusLine();
   renderGrowthChart();
+  renderBestSubmitSection();
 }
 initApp();
 
