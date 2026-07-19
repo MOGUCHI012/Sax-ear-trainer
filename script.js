@@ -177,6 +177,11 @@ let bgmWasPlayingBeforeHidden = false;
 let bgmPausedByBackground = false;
 
 function pauseBgmForBackground() {
+  // ★ ゲーム中・カウントダウン中はBGMを触らない。
+  //   iOSでは<audio>のpauseがWeb Audioと共有のオーディオセッションを止め、
+  //   AudioContextをsuspendさせて効果音（基準音・問題音）を無音化させ得るため。
+  //   （そもそもゲーム中BGMはmutedで実質無音なので、pauseする実益もない）
+  if (isPlayingGame || isCountingDown) return;
   if (!bgmPausedByBackground) {
     bgmWasPlayingBeforeHidden = !bgmAudio.paused;
     bgmPausedByBackground = true;
@@ -184,6 +189,11 @@ function pauseBgmForBackground() {
   bgmAudio.pause();
 }
 function resumeBgmFromBackground() {
+  // ★ 復帰時、ゲーム中ならAudioContextを確実に起こす（効果音の復帰保険）
+  if (isPlayingGame || isCountingDown) {
+    resumeAudioIfNeeded();
+    return;
+  }
   if (!bgmPausedByBackground) return;
   bgmPausedByBackground = false;
   if (bgmWasPlayingBeforeHidden) bgmAudio.play().catch(() => {});
@@ -251,7 +261,11 @@ function replayTrainingQuestion() {
   if (now - lastTrainingReplayTime < 1200) return;
   lastTrainingReplayTime = now;
 
-  playSaxTone(getFrequency(currentReferenceNote), 0.4);
+  // ★ 基準音→問題音をAudioContextスケジューラで予約（iOS対策。nextQuestionと同方式）
+  resumeAudioIfNeeded();
+  const startAt = audioCtx.currentTime;
+  playSaxTone(getFrequency(currentReferenceNote), 0.4, startAt);
+  playSaxTone(getFrequency(currentQuestionNote), 0.6, startAt + 0.6);
   // ★ STAGE3・4は基準音の鍵盤ハイライトも初回と同様に行う
   if (currentStage >= 3) {
     const referenceBtn = document.getElementById('note-' + currentReferenceNote);
@@ -260,11 +274,6 @@ function replayTrainingQuestion() {
       setTimeout(() => referenceBtn.classList.remove('reference-highlight'), 400);
     }
   }
-  setTimeout(() => {
-    // 再生待ちの間に回答済み・終了済みなら問題音は鳴らさない
-    if (!isPlayingGame || !isWaitingForAnswer) return;
-    playSaxTone(getFrequency(currentQuestionNote), 0.6);
-  }, 600);
 }
 
 // ★ 特訓終了（右上の🏁ボタンから任意のタイミングで呼ばれる）
@@ -415,19 +424,22 @@ function updateNoteLabels() {
 const diatonicSequencePC     = ['C', 'D', 'E', 'F', 'G', 'A', 'B', 'HighC'];
 const diatonicSequenceMobile = ['LowA', 'LowB', 'C', 'D', 'E', 'F', 'G', 'A', 'B', 'HighC', 'HighD', 'HighE'];
 
-// ==== ★ 鍵盤モード別の「黒鍵を含む全音域（クロマチック）」の並び（ピッチ順）====
-const chromaticSequencePC     = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B', 'HighC'];
+// ==== ★ 全音域（黒鍵を含むクロマチック）の並び（ピッチ順）====
+// ※出題条件を両モード共通にしたため、出題には下のquestionOrder系とgetStage3Windowsを使う。
+//   この配列は全音域のピッチ順として、STAGE3の窓計算・和集合の並び・音階なぞり判定に使われる。
 const chromaticSequenceMobile = ['LowA', 'LowBb', 'LowB', 'C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B', 'HighC', 'HighDb', 'HighD', 'HighEb', 'HighE'];
 
-// ==== ★ スマホ（拡張レンジ）用の「出題順」シーケンス ====
-// 【バグ修正】従来はスマホモードで表示順（ラ↓始まり）をそのまま出題順に流用していたため、
-// STAGE1・2のスタート時に基準ドより下の音（ラ↓・シ↓等）から出題されてしまっていた。
-// 設計意図（STAGE1・2は基準ド=442から上の音のみ）に合わせ、出題順は「ド」起点の昇順とする。
-// 低音域（ラ↓・シ♭↓・シ↓）はSTAGE1・2では出題しない（鍵盤には表示され、フリープレイでは鳴らせる）。
-const questionOrderDiatonicMobile  = ['C', 'D', 'E', 'F', 'G', 'A', 'B', 'HighC', 'HighD', 'HighE'];
-const questionOrderChromaticMobile = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B', 'HighC', 'HighDb', 'HighD', 'HighEb', 'HighE'];
-// STAGE4（全音域）はドから上へ広がり、低音域は最後の拡張枠として出題対象になる
-const questionOrderStage4Mobile = questionOrderChromaticMobile.concat(['LowB', 'LowBb', 'LowA']);
+// ==== ★ 「出題順」シーケンス（鍵盤モードに関わらず両モード共通）====
+// 【設計】オクターブ同一視の正誤判定（getPitchClass）があるため、鍵盤の音域は出題範囲を
+// 制約しない。PCの1オクターブ鍵盤でも「レ↑」の出題に「レ」の鍵盤で正解できる。
+// そこで出題条件はPC／スマホ拡張レンジで完全に同一とし、鍵盤モードは
+// 「どの鍵盤を表示するか（入力レイアウト）」だけの違いにする。ランキングの公平性も担保される。
+// 【バグ修正の経緯】従来はスマホで表示順（ラ↓始まり）を出題順に流用しており、
+// スタート時に基準ドより下の音から出題されていた。出題順は「ド」起点の昇順とする。
+const questionOrderDiatonic  = ['C', 'D', 'E', 'F', 'G', 'A', 'B', 'HighC', 'HighD', 'HighE'];
+const questionOrderChromatic = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B', 'HighC', 'HighDb', 'HighD', 'HighEb', 'HighE'];
+// STAGE4（全音域）はドから上へ広がり、低音域（シ↓→シ♭↓→ラ↓）は最後の拡張枠として出題対象になる
+const questionOrderStage4 = questionOrderChromatic.concat(['LowB', 'LowBb', 'LowA']);
 
 let activeNoteSequence = diatonicSequencePC;
 let currentNoteCount = 4;
@@ -445,11 +457,11 @@ let stage3LowWindow = STAGE3_WINDOW_START;
 let stage3HighWindow = STAGE3_WINDOW_START;
 
 // ★ STAGE3の2窓それぞれの「伸びていく順」の音列を返す。
-//   互いの基準音を越えて鍵盤の端まで伸びる（案1）：
-//   PC: 各13音 / スマホ: 下窓17音（ド→…→ミ↑）・上窓16音（上のド→…→ラ↓）
+//   鍵盤モードに関わらず共通（出題条件の統一のため）。互いの基準音を越えて全音域の端まで伸びる：
+//   下窓17音（ド→…→ミ↑）・上窓16音（上のド→…→ラ↓）
+//   ※1オクターブ鍵盤（PC表示）ではオクターブ違いの鍵盤で回答する（ピッチクラス同一視）
 function getStage3Windows() {
-  const mode = document.getElementById('keyboard-mode-select').value;
-  const seq = (mode === 'pc') ? chromaticSequencePC : chromaticSequenceMobile;
+  const seq = chromaticSequenceMobile; // 全音域のピッチ順
   const up = seq.filter(n => semitoneOffsets[n] >= semitoneOffsets['C']); // ドから上へ（昇順）
   const down = seq.filter(n => semitoneOffsets[n] <= semitoneOffsets['HighC']).slice().reverse(); // 上のドから下へ（降順）
   return { up: up, down: down };
@@ -647,11 +659,51 @@ function getFrequency(noteName) {
 }
 
 function initAudio() {
-  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    // ★ iOS対策：AudioContextが中断(interrupted/suspended)に落ちたら自動で起こし直す。
+    //   iOSは他アプリの音・通話・サイレント操作などで勝手にsuspendすることがある。
+    //   （interruptedはiOS独自の状態。標準のsuspended同様、resumeで復帰できる）
+    audioCtx.addEventListener('statechange', () => {
+      if ((audioCtx.state === 'suspended' || audioCtx.state === 'interrupted') && (isPlayingGame || isCountingDown)) {
+        audioCtx.resume().catch(() => {});
+      }
+    });
+  }
   if (audioCtx.state === 'suspended') audioCtx.resume();
 }
 
+// ★ iOS対策の要：音を鳴らす直前に必ず呼ぶ。
+//   iOS SafariはユーザータップのスタックやsetTimeout境界をまたぐとAudioContextを
+//   suspendedに戻すことがあり、その状態でoscillator.start()を呼んでも無音になる。
+//   全ての再生関数（playTone/playSaxTone）の冒頭でこれを呼び、r? suspendedならresumeする。
+//   resumeは非同期だが、iOSでは呼んだ直後に十分な精度でrunningへ移るため、
+//   直後のstart()でも実用上問題なく鳴る（完全な保証が要る開始時はensureAudioRunning側で待つ）。
+function resumeAudioIfNeeded() {
+  if (audioCtx && audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+}
+
+// ★ ゲーム開始など「確実にrunningであること」が必要な場面で使う、resume完了を待つ版。
+//   AudioContextが未生成なら生成し、suspendedならresumeのPromiseを待ってからコールバックを呼ぶ。
+function ensureAudioRunning(callback) {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'running') {
+    callback();
+    return;
+  }
+  // suspended / interrupted（iOS特有の中断状態）→ resumeを試み、完了後にコールバック
+  audioCtx.resume().then(() => {
+    callback();
+  }).catch(() => {
+    // resumeが失敗しても、ひとまず進める（次の再生時にresumeAudioIfNeededが再試行する）
+    callback();
+  });
+}
+
 function playTone(frequency, duration, type = 'triangle', time = null) {
+  resumeAudioIfNeeded(); // ★ iOS: suspendedなら鳴らす前にresume
   const osc = audioCtx.createOscillator(); const gainNode = audioCtx.createGain();
   osc.type = type; osc.frequency.value = frequency;
   osc.connect(gainNode); gainNode.connect(audioCtx.destination);
@@ -689,6 +741,7 @@ function getBreathNoiseBuffer() {
 }
 
 function playSaxTone(frequency, duration, time = null) {
+  resumeAudioIfNeeded(); // ★ iOS: suspendedなら鳴らす前にresume（問題音が無音になる不具合対策）
   const now = time !== null ? time : audioCtx.currentTime;
   const stopTime = now + duration + 0.08;
 
@@ -769,8 +822,9 @@ function updateDifficulty() {
 
   if (currentStage === 3) {
     // ==== ★ STAGE3: 両端2窓方式 ====
-    // activeNoteSequenceは鍵盤全体のピッチ順（音階なぞり判定・和集合の並び用）
-    activeNoteSequence = (mode === 'pc') ? chromaticSequencePC : chromaticSequenceMobile;
+    // activeNoteSequenceは全音域のピッチ順（音階なぞり判定・和集合の並び用）。
+    // 出題条件の統一のため、鍵盤モードに関わらず共通の音列を使う
+    activeNoteSequence = chromaticSequenceMobile;
     const w = getStage3Windows();
     // ★ 苦手特訓モードは最初から両窓とも全開（基準に応じた方向の全音から出題される）
     if (isTrainingMode) { stage3LowWindow = w.up.length; stage3HighWindow = w.down.length; }
@@ -786,16 +840,14 @@ function updateDifficulty() {
     document.getElementById('difficulty-badge').innerText = `開放音数: 下${stage3LowWindow} / 上${stage3HighWindow}`;
   } else {
     // ==== ★ STAGE1・2・4: 単一窓（出題順シーケンスの先頭からcurrentNoteCount音）====
-    // 【バグ修正】スマホ（拡張レンジ）では従来、表示順（ラ↓始まり）を出題順に流用していたため、
-    // スタート時に基準ドより下の音から出題されていた。出題順は「ド」起点の専用シーケンスを使う。
-    if (mode === 'pc') {
-      activeNoteSequence = includeChromatic ? chromaticSequencePC : diatonicSequencePC;
-    } else if (currentStage === 1) {
-      activeNoteSequence = questionOrderDiatonicMobile;
+    // 出題順は鍵盤モードに関わらず共通（ピッチクラス同一視により、1オクターブ鍵盤でも
+    // 「レ↑」等の出題に「レ」の鍵盤で回答できるため、出題条件を統一してランキングを公平にする）
+    if (currentStage === 1) {
+      activeNoteSequence = questionOrderDiatonic;
     } else if (currentStage === 2) {
-      activeNoteSequence = questionOrderChromaticMobile;
+      activeNoteSequence = questionOrderChromatic;
     } else { // STAGE4
-      activeNoteSequence = questionOrderStage4Mobile;
+      activeNoteSequence = questionOrderStage4;
     }
 
     // ★ 苦手特訓モードは最初から全音開放（連続正解での拡張・ミスでの縮小は行わない）
@@ -833,6 +885,16 @@ function updateDifficulty() {
 
 function getEffectiveAvailableNotes() {
   return isPlayingGame ? currentAvailableNotes : freePlayNotes;
+}
+
+// ★ 正解鍵盤のハイライト用：その音の鍵盤が現在表示されていなければ、
+//   同じピッチクラスの表示中の鍵盤を代わりに返す（例: PCの1オクターブ鍵盤で「レ↑」→「レ」を光らせる）。
+//   出題条件を鍵盤モード共通にしたため、表示範囲外の音の出題がPC鍵盤でも起こり得る。
+function getHighlightKeyForNote(note) {
+  if (freePlayNotes.includes(note)) return document.getElementById('note-' + note);
+  const pc = getPitchClass(note);
+  const alt = freePlayNotes.find(n => getPitchClass(n) === pc);
+  return alt ? document.getElementById('note-' + alt) : null;
 }
 
 function updateKeyboardUI() { updateDifficulty(); }
@@ -1072,16 +1134,18 @@ function startSequence() {
   isCountingDown = true;
   lockBodyScroll(); // ★ 「もう一度プレイ」経由の場合もここでロック
 
+  // ★ iOS対策：AudioContextが確実にrunningになってからカウントダウンを始める。
+  //   ゲーム開始直前のBGM muted化などでsuspend/interruptedに落ちていても、
+  //   ここでresume完了を待つことで、以降の基準音・問題音が確実に鳴る。
+  //   coldStart（初回・中断復帰）は音の頭が欠けないよう少し待ってから開始する。
   const isColdStart = !audioCtx || audioCtx.state !== 'running';
-  initAudio();
-
-  if (isColdStart) {
-    audioCtx.resume().then(() => {
+  ensureAudioRunning(() => {
+    if (isColdStart) {
       setTimeout(beginCountdownSequence, 150);
-    });
-  } else {
-    beginCountdownSequence();
-  }
+    } else {
+      beginCountdownSequence();
+    }
+  });
 }
 
 function beginCountdownSequence() {
@@ -1228,13 +1292,16 @@ function nextQuestion() {
     }
   }
 
-  playSaxTone(referenceFreq, 0.4);
-  setTimeout(() => {
+  // ★★ iOS対策の本命：基準音と問題音を「1つの同期呼び出し」の中で、
+  //   AudioContextのネイティブスケジューラを使って予約する。
+  //   従来は問題音を setTimeout(600ms) 内で鳴らしていたが、iOSではsetTimeout境界で
+  //   AudioContextがsuspendedに戻り、コールバック内のstart()が無音になっていた。
+  //   currentTime基準で予約すれば、その後にsuspendしても予約済みの音は鳴る。
+  //   ※出題音の選定は「音を予約する前」に確定させる必要があるため、ここで先に決める。
+  ensureAudioRunning(() => {
     if (!isPlayingGame) return;
 
     // ★ STAGE3（両端2窓方式）：その問題の基準音の側の窓からのみ出題する。
-    //   基準「ド」→下窓（ドから上へstage3LowWindow音）
-    //   基準「上のド」→上窓（上のドから下へstage3HighWindow音）
     let questionPool = null;
     if (currentStage === 3) {
       const w = getStage3Windows();
@@ -1250,14 +1317,25 @@ function nextQuestion() {
       currentIntervalClass = ((diff % 12) + 12) % 12;
     }
 
+    const questionFreq = getFrequency(currentQuestionNote);
+
+    // 基準音は即座に、問題音は0.6秒後を「AudioContextの時刻」で予約する（setTimeoutを介さない）
+    const startAt = audioCtx.currentTime;
+    playSaxTone(referenceFreq, 0.4, startAt);
+    playSaxTone(questionFreq, 0.6, startAt + 0.6);
+
     // ※ attempts（出題回数）は「回答した時点」でcheckAnswer側から加算する。
     //   ここで加算すると、時間切れで答えられなかった問題まで誤答として集計され、
     //   苦手ランキングの正答率が不当に下がってしまうため。
 
-    const questionFreq = getFrequency(currentQuestionNote);
-    playSaxTone(questionFreq, 0.6);
-    questionStartTime = performance.now(); isWaitingForAnswer = true;
-  }, 600);
+    // ★ 状態遷移（回答受付・反応時間計測の開始）は、問題音が実際に鳴り始める600ms後に合わせる。
+    //   この setTimeout は音の再生とは無関係なので、iOSでsuspendしても実害がない。
+    setTimeout(() => {
+      if (!isPlayingGame) return;
+      questionStartTime = performance.now();
+      isWaitingForAnswer = true;
+    }, 600);
+  });
 }
 
 function checkAnswer(answerNote) {
@@ -1397,7 +1475,7 @@ function checkAnswer(answerNote) {
       document.body.classList.add('flash-red');
       setTimeout(() => document.body.classList.remove('flash-red'), 100);
       updateTrainingStats();
-      const trainNgBtn = document.getElementById('note-' + currentQuestionNote);
+      const trainNgBtn = getHighlightKeyForNote(currentQuestionNote);
       if (trainNgBtn) { trainNgBtn.classList.add('correct-highlight'); setTimeout(() => trainNgBtn.classList.remove('correct-highlight'), 800); }
       document.getElementById('game-message-area').innerHTML = `<div>正解: <strong>${getFullNoteName(currentQuestionNote)}</strong></div>`;
       setTimeout(nextQuestion, 1000);
@@ -1421,7 +1499,7 @@ function checkAnswer(answerNote) {
     setTimeout(() => document.body.classList.remove('flash-red'), 100);
     updateStats();
     
-    const actualCorrectBtn = document.getElementById('note-'+currentQuestionNote);
+    const actualCorrectBtn = getHighlightKeyForNote(currentQuestionNote);
     if(actualCorrectBtn) {
       actualCorrectBtn.classList.add('correct-highlight');
       setTimeout(() => actualCorrectBtn.classList.remove('correct-highlight'), 800);
