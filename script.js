@@ -138,6 +138,10 @@ function stopBGM(fade = true) {
   }
   // ★ ゲーム開始時：最優先事項として、必ず即座に無音化する
   bgmAudio.muted = true;
+  // ★ iOS対策：BGMが（誤blur等で）既にpauseされていると、音声セッションのアンカーが無くなり、
+  //   サイレントスイッチONの端末でWeb Audio（基準音・問題音・効果音）が無音化してしまう。
+  //   muted状態のまま再生し直して、無音のアンカーとしてセッションを維持する。
+  if (bgmAudio.paused) bgmAudio.play().catch(() => {});
 }
 
 function toggleBGM() {
@@ -209,9 +213,16 @@ document.addEventListener('freeze', pauseBgmForBackground);
 // ★ blur/focusはモバイルのみ対象にする。PCではウィンドウを切り替えるたびに
 //   BGMが止まると煩わしいため。deviceTypeは後方で宣言されるconstだが、
 //   コールバックの実行はスクリプト評価完了後なのでTDZの問題は起きない。
+// ★★ iOSは画面操作中（オーバーレイの消去・アドレスバー操作等）に「瞬間的なblur」を
+//   発火することがあり、即pauseするとBGMが数秒で途切れる症状の原因になる。
+//   500ms待って、なおフォーカスが無い（本当にバックグラウンドへ行った）場合のみ止める。
 window.addEventListener('blur', () => {
   if (deviceType === 'pc') return;
-  pauseBgmForBackground();
+  setTimeout(() => {
+    if (document.hidden || !document.hasFocus()) {
+      pauseBgmForBackground();
+    }
+  }, 500);
 });
 window.addEventListener('focus', () => {
   if (deviceType === 'pc') return;
@@ -390,6 +401,17 @@ function getFullNoteName(note) {
   return `${nishizukaKatakana[pc]}${arrow} (${englishPitchNames[pc]})`;
 }
 
+// ★ STAGE3の方向付きキー（'up:D' / 'down:A'）を表示ラベルへ変換する。
+//   上行は「⬆」、下行は「⬇」を音名の前に付ける（例: ⬆レ (D) / ⬇ラ (A)）。
+//   方向プレフィックスが無いキーは通常の音名として返す（防御的）。
+function getDirectionalNoteLabel(key) {
+  let dir = '', note = key;
+  if (key.indexOf('up:') === 0) { dir = '⬆'; note = key.slice(3); }
+  else if (key.indexOf('down:') === 0) { dir = '⬇'; note = key.slice(5); }
+  else return getFullNoteName(key);
+  return dir + getFullNoteName(note);
+}
+
 // ★ 半音の入力方式：'dedicated'(専用キー) or 'modifier'(Space修飾キー)
 let semitoneInputMode = localStorage.getItem('saxEarTrainSemitoneInputMode') || 'dedicated';
 
@@ -468,13 +490,49 @@ function getStage3Windows() {
 }
 
 // ==== ★ 苦手な音の統計はステージごとに別々に管理する ====
+// STAGE1・2・4は音名キー（例 'D'）で集計。
+// STAGE3のみ「方向付きキー」（例 'up:D'＝基準ドから上行してレ / 'down:A'＝上のドから下行してラ）で
+// 集計し、同じ音名でも上行・下行を別々の苦手として扱う。
+// ★ STAGE3の方向付き統計キーを作るヘルパー（reference='C'なら上行/'HighC'なら下行）
+function stage3StatKey(note, referenceNote) {
+  const dir = (referenceNote === 'HighC') ? 'down' : 'up';
+  return dir + ':' + note;
+}
 let noteStatsByStage = JSON.parse(localStorage.getItem('saxEarTrainStatsByStage')) || {};
 [1, 2, 3, 4].forEach(stageNum => {
   if (!noteStatsByStage[stageNum]) noteStatsByStage[stageNum] = {};
-  allNoteKeys.forEach(k => {
-    if (!noteStatsByStage[stageNum][k]) noteStatsByStage[stageNum][k] = { attempts: 0, correct: 0, totalTime: 0 };
-  });
+  if (stageNum === 3) {
+    // STAGE3は方向付きキーで初期化（上行17音＋下行16音の枠を用意）
+    allNoteKeys.forEach(k => {
+      ['up:' + k, 'down:' + k].forEach(key => {
+        if (!noteStatsByStage[3][key]) noteStatsByStage[3][key] = { attempts: 0, correct: 0, totalTime: 0 };
+      });
+    });
+  } else {
+    allNoteKeys.forEach(k => {
+      if (!noteStatsByStage[stageNum][k]) noteStatsByStage[stageNum][k] = { attempts: 0, correct: 0, totalTime: 0 };
+    });
+  }
 });
+
+// ★ STAGE3統計を「音名キー→方向付きキー」へ移行する（一度だけ）。
+//   方向情報を持たない旧STAGE3データは方向の判別が不可能なため、破棄して作り直す。
+//   （STAGE3は比較的新しいステージであり、混在した統計を残すより初期化する方が正確）
+(function migrateStage3DirectionalStats() {
+  if (localStorage.getItem('saxEarTrainStage3DirMigrated') === 'true') return;
+  localStorage.setItem('saxEarTrainStage3DirMigrated', 'true');
+  const s3 = noteStatsByStage[3] || {};
+  // 旧形式（音名キー。方向プレフィックスが無い）が残っていれば破棄して方向付きで作り直す
+  const hasLegacy = Object.keys(s3).some(k => k.indexOf('up:') !== 0 && k.indexOf('down:') !== 0);
+  if (hasLegacy) {
+    noteStatsByStage[3] = {};
+    allNoteKeys.forEach(k => {
+      noteStatsByStage[3]['up:' + k] = { attempts: 0, correct: 0, totalTime: 0 };
+      noteStatsByStage[3]['down:' + k] = { attempts: 0, correct: 0, totalTime: 0 };
+    });
+    localStorage.setItem('saxEarTrainStatsByStage', JSON.stringify(noteStatsByStage));
+  }
+})();
 
 // ==== ★ ステージ4（ランダム基準音）専用：苦手な「音程（跳躍）」の統計 ====
 // 半音差(0〜11)ごとに正答率・反応時間を記録する
@@ -662,15 +720,14 @@ function initAudio() {
   if (!audioCtx) {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     // ★ iOS対策：AudioContextが中断(interrupted/suspended)に落ちたら自動で起こし直す。
-    //   iOSは他アプリの音・通話・サイレント操作などで勝手にsuspendすることがある。
-    //   （interruptedはiOS独自の状態。標準のsuspended同様、resumeで復帰できる）
+    //   iOSは他アプリの音・通話・オーディオセッション切替などで勝手に中断することがある。
     audioCtx.addEventListener('statechange', () => {
-      if ((audioCtx.state === 'suspended' || audioCtx.state === 'interrupted') && (isPlayingGame || isCountingDown)) {
+      if (audioCtx.state !== 'running') {
         audioCtx.resume().catch(() => {});
       }
     });
   }
-  if (audioCtx.state === 'suspended') audioCtx.resume();
+  if (audioCtx.state !== 'running') audioCtx.resume().catch(() => {});
 }
 
 // ★ iOS対策の要：音を鳴らす直前に必ず呼ぶ。
@@ -680,27 +737,41 @@ function initAudio() {
 //   resumeは非同期だが、iOSでは呼んだ直後に十分な精度でrunningへ移るため、
 //   直後のstart()でも実用上問題なく鳴る（完全な保証が要る開始時はensureAudioRunning側で待つ）。
 function resumeAudioIfNeeded() {
-  if (audioCtx && audioCtx.state === 'suspended') {
-    audioCtx.resume();
+  // ★ iOS固有の'interrupted'状態も取りこぼさないよう、runningでなければすべてresumeを試みる
+  //   （従来は'suspended'のみチェックしており、interruptedで無音のままになる穴があった）
+  if (audioCtx && audioCtx.state !== 'running') {
+    audioCtx.resume().catch(() => {});
   }
 }
 
 // ★ ゲーム開始など「確実にrunningであること」が必要な場面で使う、resume完了を待つ版。
-//   AudioContextが未生成なら生成し、suspendedならresumeのPromiseを待ってからコールバックを呼ぶ。
+//   ⚠️iOSではユーザージェスチャ外のresume()のPromiseが「解決も拒否もされず宙吊り」に
+//   なることがある。待ち続けると出題自体が止まってしまうため、400msのタイムアウトで
+//   必ず先へ進める（音の復帰は、再生直前のresumeAudioIfNeededと、下の
+//   「ユーザー操作のたびにresume」の救済処理が引き続き再試行する）。
 function ensureAudioRunning(callback) {
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   if (audioCtx.state === 'running') {
     callback();
     return;
   }
-  // suspended / interrupted（iOS特有の中断状態）→ resumeを試み、完了後にコールバック
-  audioCtx.resume().then(() => {
-    callback();
-  }).catch(() => {
-    // resumeが失敗しても、ひとまず進める（次の再生時にresumeAudioIfNeededが再試行する）
-    callback();
-  });
+  let done = false;
+  const proceed = () => { if (done) return; done = true; callback(); };
+  audioCtx.resume().then(proceed).catch(proceed);
+  setTimeout(proceed, 400);
 }
+
+// ★★ iOS救済の最終ライン：ユーザー操作（タップ・キー入力）のたびに、
+//   AudioContextが止まっていれば「ユーザージェスチャの中で」resumeする。
+//   iOSではジェスチャ内のresumeが最も確実に成功するため、
+//   鍵盤を叩く・画面に触れるだけで音声が自動復旧する。
+['pointerdown', 'touchend', 'keydown'].forEach(evName => {
+  document.addEventListener(evName, () => {
+    if (audioCtx && audioCtx.state !== 'running') {
+      audioCtx.resume().catch(() => {});
+    }
+  }, { capture: true, passive: true });
+});
 
 function playTone(frequency, duration, type = 'triangle', time = null) {
   resumeAudioIfNeeded(); // ★ iOS: suspendedなら鳴らす前にresume
@@ -1211,15 +1282,19 @@ function getNextNoteByWeight(poolOverride) {
   //   省略時は従来通り currentAvailableNotes（開放中の音すべて）から選ぶ。
   const notesPool = (poolOverride && poolOverride.length > 0) ? poolOverride : currentAvailableNotes;
   const statsForStage = noteStatsByStage[currentStage];
+  // ★ STAGE3は方向付きキーで統計を引く（この関数が呼ばれる時点で currentReferenceNote は確定済み）
+  const statOf = (note) => (currentStage === 3)
+    ? statsForStage[stage3StatKey(note, currentReferenceNote)]
+    : statsForStage[note];
   let weights = {};
   notesPool.forEach(note => {
-    let stat = statsForStage[note]; let weight = 1.0; 
+    let stat = statOf(note); let weight = 1.0; 
     // ★ 弱点優先の重み付けは「苦手特訓モード専用」。
     //   通常モードは均等ランダム（全音とも重み1.0固定）とし、ランキングの公平性を保つ。
     //   ※かつては通常モードにも軽い弱点優先（ミス率×2.0＋反応時間係数）が入っていたが、
     //     苦手な音が多い人ほど難しい出題を多く引いてスコアが伸びにくい構造になるため、
     //     苦手特訓モードの実装を機に廃止した（練習は特訓モードの役割に一本化）。
-    if (isTrainingMode && stat.attempts > 0) {
+    if (isTrainingMode && stat && stat.attempts > 0) {
       const missRate = 1 - (stat.correct / stat.attempts);
       const timeFactor = Math.min((stat.totalTime / stat.correct || 1000) / 800, 1.5);
       // ★ 苦手なほど「出題確率」を強めに引き上げる。最も苦手な音は完璧な音の最大約9倍出やすい。
@@ -1353,8 +1428,11 @@ function checkAnswer(answerNote) {
   isWaitingForAnswer = false; 
   const statsForStage = noteStatsByStage[currentStage];
 
+  // ★ 統計を加算する対象。STAGE3のみ方向付きキー（up:/down:）、他は音名キー。
+  const statKey = (currentStage === 3) ? stage3StatKey(currentQuestionNote, currentReferenceNote) : currentQuestionNote;
+
   // ★ 実際に回答されたので、ここで初めて出題回数(attempts)を加算する
-  statsForStage[currentQuestionNote].attempts++;
+  statsForStage[statKey].attempts++;
   if (currentStage === 4) intervalStats[currentIntervalClass].attempts++;
 
   // ★ 成長グラフ用に、今回のプレイ全体の集計も取る
@@ -1364,8 +1442,8 @@ function checkAnswer(answerNote) {
   if (getPitchClass(answerNote) === getPitchClass(currentQuestionNote)) {
     sessionCorrectCount++;
     streak++; 
-    statsForStage[currentQuestionNote].correct++;
-    statsForStage[currentQuestionNote].totalTime += responseTime;
+    statsForStage[statKey].correct++;
+    statsForStage[statKey].totalTime += responseTime;
 
     if (currentStage === 4) {
       intervalStats[currentIntervalClass].correct++;
@@ -1465,7 +1543,12 @@ function checkAnswer(answerNote) {
     streak = 0; combo = 0;
 
     // ★ 今回のプレイの弱点として記録する（ステージ4は音程、それ以外は音名で集計）
-    const mistakeKey = (currentStage === 4) ? ('interval:' + currentIntervalClass) : currentQuestionNote;
+    // ★ 今回のプレイの弱点として記録する（ステージ4は音程、STAGE3は方向付き音名、それ以外は音名）
+    const mistakeKey = (currentStage === 4)
+      ? ('interval:' + currentIntervalClass)
+      : (currentStage === 3)
+        ? stage3StatKey(currentQuestionNote, currentReferenceNote)
+        : currentQuestionNote;
     sessionMistakes[mistakeKey] = (sessionMistakes[mistakeKey] || 0) + 1;
 
     // ★ 苦手特訓モード：開放音の縮小は行わず、正解の提示と統計更新のみ
@@ -1585,7 +1668,37 @@ function updateAnalyticsUI() {
     return;
   }
 
-  // ★ ステージ1〜3は通常の「苦手な音」ランキング（ステージごとに別集計）
+  // ★ STAGE3は方向付き（上行/下行）の苦手な音ランキングを表示する
+  if (currentStage === 3) {
+    if (titleEl) titleEl.innerText = '🚨 STAGE3 苦手な音（⬆上行/⬇下行）';
+    const s3 = noteStatsByStage[3];
+    let displayData = [];
+    Object.keys(s3).forEach(key => {
+      const stat = s3[key];
+      if (stat && stat.attempts > 2) {
+        const rawAccuracy = stat.correct / stat.attempts;
+        const accuracy = Math.round(rawAccuracy * 100);
+        const avgTime = stat.correct > 0 ? Math.round(stat.totalTime / stat.correct) : 0;
+        displayData.push({ label: getDirectionalNoteLabel(key), accuracy, rawAccuracy, avgTime });
+      }
+    });
+    if (displayData.length === 0) {
+      listEl.innerHTML = `<div style="font-size:0.8em; color:#bdc3c7;">データが貯まると表示されます</div>`;
+      if (moreBtn) moreBtn.style.display = 'none';
+      return;
+    }
+    displayData.sort(compareWeakness);
+    const shown = displayData.slice(0, weakNotesDisplayCount);
+    let html = '';
+    shown.forEach((d, i) => {
+      html += `<div class="weak-note-item"><span>${i+1}. <strong>${d.label}</strong></span><span>正答率: ${d.accuracy}% / 平均: ${d.avgTime}ms</span></div>`;
+    });
+    listEl.innerHTML = html;
+    if (moreBtn) moreBtn.style.display = (displayData.length > weakNotesDisplayCount) ? 'block' : 'none';
+    return;
+  }
+
+  // ★ ステージ1・2は通常の「苦手な音」ランキング（ステージごとに別集計）
   if (titleEl) titleEl.innerText = `🚨 STAGE${currentStage} 苦手な音`;
   const statsForStage = noteStatsByStage[currentStage];
   let displayData = [];
@@ -1758,7 +1871,9 @@ function buildSessionWeaknessHTML() {
       const idx = parseInt(key.split(':')[1], 10);
       return intervalNames[idx] || '?';
     }
-    return noteNames[key] || key;
+    // ★ STAGE3の方向付きキー（up:/down:）は⬆⬇付きで表示、それ以外は通常の音名
+    if (key.indexOf('up:') === 0 || key.indexOf('down:') === 0) return getDirectionalNoteLabel(key);
+    return getFullNoteName(key);
   };
 
   const title = (currentStage === 4) ? '今回ミスした音程' : '今回ミスした音';
