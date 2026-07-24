@@ -42,6 +42,118 @@ bgmAudio.volume = BGM_VOLUME;
 let bgmEnabled = (localStorage.getItem('saxEarTrainBgmEnabled') !== 'false'); // デフォルトON
 let bgmFadeInterval = null;
 
+// ==== ★ BGMライブラリ（解禁システム）====
+// 音源はすべて「CC0 1.0 Universal（パブリックドメイン）」。
+// ライセンス上クレジット表記の義務はないが、利用マナーとしてBGMモーダル内に出典を明記している。
+// 解禁条件(unlock)の種類：
+//   { type: 'default' }            … 最初から使える
+//   { type: 'stage', stage: N }    … STAGE N が解禁されていれば使える
+//   { type: 'score', score: N }    … いずれかのステージでN点以上の自己ベストがあれば使える
+// secret: true の曲は解禁条件も伏せ、詩的なヒントだけを表示する（隠し曲）。
+// ※ロック中はどの曲も曲名を「？？？」で伏せる。
+const BGM_LIBRARY = [
+  {
+    id: 'bgm1',
+    file: 'The_Basie_Twist.mp3',
+    title: 'The Basie Twist',
+    artist: 'Count Basie And His Orchestra',
+    year: 1961,
+    unlock: { type: 'default' }
+  },
+  {
+    id: 'bgm2',
+    file: 'Eager_Beaver.mp3',
+    title: 'Eager Beaver',
+    artist: 'Stan Kenton And His Orchestra',
+    year: 1943,
+    unlock: { type: 'stage', stage: 2 }
+  },
+  {
+    id: 'bgm3',
+    file: 'Take_The_A_Train.mp3',
+    title: 'Take The "A" Train',
+    artist: 'Duke Ellington And His Orchestra',
+    year: 1960,
+    unlock: { type: 'stage', stage: 3 }
+  },
+  {
+    id: 'bgm4',
+    file: 'Artistry_Jumps__alt_.mp3',
+    title: 'Artistry Jumps (alt)',
+    artist: 'Stan Kenton And His Orchestra',
+    year: 1945,
+    unlock: { type: 'stage', stage: 4 }
+  },
+  {
+    id: 'bgm5',
+    file: 'Basie.mp3',
+    title: 'Basie',
+    artist: 'Count Basie And His Orchestra',
+    year: 1961,
+    unlock: { type: 'score', score: 500000 } // ★ 条件は明記し、曲名のみ伏せる
+  },
+  {
+    id: 'bgm6',
+    file: 'Artistry_In_Rhythm__Production_on_theme_.mp3',
+    title: 'Artistry In Rhythm (Production on theme)',
+    artist: 'Stan Kenton And His Orchestra',
+    year: 1943,
+    unlock: { type: 'score', score: 1000000 },
+    secret: true,               // ★ 隠し曲：条件も伏せ、ヒントのみ表示
+    hint: '伝説の耳を持つ者だけが辿り着く'
+  }
+];
+
+// ★ 現在選択中のBGM（IDで保持。保存された曲が未解禁・不明なら先頭へフォールバック）
+let currentBgmId = localStorage.getItem('saxEarTrainBgmId') || BGM_LIBRARY[0].id;
+
+function getBgmById(id) {
+  return BGM_LIBRARY.find(b => b.id === id) || BGM_LIBRARY[0];
+}
+
+// ★ その曲が解禁済みかどうか
+//   ※ isStageUnlocked / bestScoreByStage は後方で宣言されるが、
+//     この関数が呼ばれるのはスクリプト評価後なのでTDZの問題は起きない。
+function isBgmUnlocked(bgm) {
+  const u = bgm.unlock;
+  if (!u || u.type === 'default') return true;
+  if (u.type === 'stage') return isStageUnlocked(u.stage);
+  if (u.type === 'score') return getOverallBestScore() >= u.score;
+  return false;
+}
+
+// ★ 解禁条件の表示テキスト（ロック中に表示する）
+function getBgmUnlockLabel(bgm) {
+  const u = bgm.unlock;
+  if (!u || u.type === 'default') return '';
+  if (u.type === 'stage') return `🔒 STAGE${u.stage} 解禁で入手`;
+  if (u.type === 'score') {
+    // ★ 隠し曲は具体的な点数を伏せ、詩的なヒントだけを示す
+    return bgm.secret ? `🔒 ${bgm.hint || '???'}` : `🔒 ${u.score.toLocaleString()}点で解禁`;
+  }
+  return '🔒';
+}
+
+// ★ 現在選択中の曲が未解禁になっていないか点検し、必要なら解禁済みの曲へ戻す
+function ensureValidBgmSelection() {
+  const cur = getBgmById(currentBgmId);
+  if (!isBgmUnlocked(cur)) {
+    currentBgmId = BGM_LIBRARY[0].id;
+    localStorage.setItem('saxEarTrainBgmId', currentBgmId);
+    applyBgmSource();
+  }
+}
+
+// ★ 選択中の曲を<audio>に反映する。再生中なら続けて新しい曲を鳴らす。
+function applyBgmSource() {
+  const bgm = getBgmById(currentBgmId);
+  const newSrc = bgm.file;
+  // 既に同じ曲なら何もしない（srcは絶対URLになるため末尾一致で判定する）
+  if (bgmAudio.getAttribute('src') === newSrc) return;
+  bgmAudio.setAttribute('src', newSrc);
+  bgmAudio.load();
+}
+
 // ★ タップしてスタート画面：ここでAudioContextとBGMの両方を解禁する
 function handleTapToStart() {
   document.getElementById('tap-to-start-overlay').style.display = 'none';
@@ -59,7 +171,7 @@ function handleTapToStart() {
 // ==== ★ 初回チュートリアル（オンボーディング）====
 const tutorialSteps = [
   { icon: '🎷', title: 'ようこそ！', text: 'まずは自分の楽器に合わせて設定を変更しましょう（デフォルトはC管・ピアノ向けです）。ヘッダーの「楽器選択」からいつでも変更できます。' },
-  { icon: '⌨️', title: '操作方法', text: 'PCの人はキーボードで、スマホの人は画面タップで遊べます。鍵盤の下の「(A)」などがPC用の割り当てキーです（カスタマイズも可能）。' },
+  { icon: '⌨️', title: '操作方法', text: '画面をタップしても、キーボードでも遊べます。鍵盤の下の「(A)」などがキーボードの割り当てキーです（カスタマイズも可能）。' },
   { icon: '🎧', title: '遊び方', text: '基準音のあとに問題音が鳴ります。素早く正しい鍵盤を押しましょう！ 連続正解でコンボが発生し、スコアも伸びていきます。' }
 ];
 let tutorialStepIndex = 0;
@@ -148,6 +260,7 @@ function toggleBGM() {
   bgmEnabled = !bgmEnabled;
   localStorage.setItem('saxEarTrainBgmEnabled', String(bgmEnabled));
   updateBgmToggleUI();
+  renderBgmModalContent(); // ★ モーダルが開いていれば状態表示も更新する
   const startScreenVisible = document.getElementById('start-screen').style.display !== 'none';
   if (bgmEnabled && startScreenVisible) {
     playBGM();
@@ -159,9 +272,98 @@ function toggleBGM() {
 function updateBgmToggleUI() {
   const btn = document.getElementById('bgm-toggle-btn');
   if (!btn) return;
-  btn.innerText = bgmEnabled ? '🔊 BGM: ON' : '🔇 BGM: OFF';
+  btn.innerText = bgmEnabled ? '🎵 BGM' : '🔇 BGM: OFF';
   btn.classList.toggle('bgm-off', !bgmEnabled);
 }
+
+// ==== ★ BGM選択モーダル ====
+function showBgmModal() {
+  renderBgmModalContent();
+  document.getElementById('bgm-modal-overlay').classList.add('visible');
+}
+function closeBgmModal() {
+  document.getElementById('bgm-modal-overlay').classList.remove('visible');
+}
+
+function renderBgmModalContent() {
+  // ON/OFFの状態表示
+  const stateBtn = document.getElementById('bgm-modal-toggle-btn');
+  if (stateBtn) {
+    stateBtn.innerText = bgmEnabled ? '🔊 BGM: ON' : '🔇 BGM: OFF';
+    stateBtn.classList.toggle('bgm-off', !bgmEnabled);
+  }
+
+  const listEl = document.getElementById('bgm-list');
+  if (!listEl) return;
+
+  let html = '';
+  BGM_LIBRARY.forEach(bgm => {
+    const unlocked = isBgmUnlocked(bgm);
+    const selected = (bgm.id === currentBgmId);
+    // ★ ロック中は曲名を伏せる（隠し曲かどうかに関わらず「？？？」表示）
+    const titleText = unlocked ? escapeHtml(bgm.title) : '？？？';
+    const metaParts = [];
+    if (unlocked && bgm.artist) metaParts.push(escapeHtml(bgm.artist));
+    if (unlocked && bgm.year) metaParts.push(escapeHtml(bgm.year));
+    const artistText = metaParts.length ? `<div class="bgm-artist">${metaParts.join(' ・ ')}</div>` : '';
+    const lockText = unlocked ? '' : `<div class="bgm-lock">${escapeHtml(getBgmUnlockLabel(bgm))}</div>`;
+    const cls = 'bgm-item' + (selected ? ' selected' : '') + (unlocked ? '' : ' locked');
+    const onclick = unlocked ? ` onclick="selectBgm('${bgm.id}')"` : '';
+    const mark = selected ? '<span class="bgm-check">▶</span>' : '';
+    html += `<div class="${cls}"${onclick}>
+        <div class="bgm-item-main">${mark}<span class="bgm-title">${titleText}</span>${artistText}</div>
+        ${lockText}
+      </div>`;
+  });
+  listEl.innerHTML = html;
+}
+
+// ★ 曲を選択する。すぐに再生して「選んだ実感」を出す（BGMがONでスタート画面のときのみ）
+function selectBgm(id) {
+  const bgm = getBgmById(id);
+  if (!isBgmUnlocked(bgm)) return;
+  currentBgmId = id;
+  localStorage.setItem('saxEarTrainBgmId', id);
+  applyBgmSource();
+  renderBgmModalContent();
+
+  // すぐ再生（ゲーム中でなく、BGMがONのときだけ）
+  if (bgmEnabled && !isPlayingGame && !isCountingDown) {
+    playBGM();
+  }
+}
+
+// ==== ★ BGM解禁の検出と通知 ====
+// リザルト表示時に「今回のプレイで新たに解禁されたBGM」を調べる。
+// 解禁済みIDをlocalStorageに記録しておき、その差分で判定する。
+function loadUnlockedBgmIds() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('saxEarTrainUnlockedBgmIds'));
+    if (Array.isArray(saved)) return saved;
+  } catch (e) { /* 壊れたデータは無視 */ }
+  return [];
+}
+let unlockedBgmIds = loadUnlockedBgmIds();
+
+// ★ 現在の解禁状況を記録し、「新たに解禁された曲」の配列を返す
+function detectNewlyUnlockedBgms() {
+  const nowUnlocked = BGM_LIBRARY.filter(isBgmUnlocked).map(b => b.id);
+  const newly = nowUnlocked.filter(id => unlockedBgmIds.indexOf(id) === -1);
+  if (newly.length > 0) {
+    unlockedBgmIds = nowUnlocked;
+    localStorage.setItem('saxEarTrainUnlockedBgmIds', JSON.stringify(unlockedBgmIds));
+  }
+  return newly.map(getBgmById);
+}
+
+// ★ 初回起動時（記録が無い状態）は、既に解禁済みの曲を「通知済み」として記録しておく。
+//   こうしないと、既存プレイヤーが次のリザルトで過去の解禁分をまとめて通知されてしまう。
+(function initUnlockedBgmRecord() {
+  if (localStorage.getItem('saxEarTrainUnlockedBgmIds') === null) {
+    unlockedBgmIds = BGM_LIBRARY.filter(isBgmUnlocked).map(b => b.id);
+    localStorage.setItem('saxEarTrainUnlockedBgmIds', JSON.stringify(unlockedBgmIds));
+  }
+})();
 
 // ==== ★ バックグラウンド移行時のBGM停止（バグ修正・強化版）====
 // スマホで別アプリへ切り替えたり、タブを閉じたり、画面をロックしたりしても
@@ -576,6 +778,46 @@ const stage4ReferencePool = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A
 //   「ド」の時はドから上の音、「オクターブ上のド」の時はそこから下の音を出題する。
 const stage3ReferencePair = ['C', 'HighC'];
 
+// ★ STAGE3 苦手特訓：基準音（上行/下行）の選択自体を苦手度で重み付けする。
+//   従来は基準音が常に50/50だったため、「下行だけ極端に苦手」でも下行は半分しか来ず、
+//   特訓としては物足りなかった。方向ごとの総合的な苦手度を出し、苦手な側を多く出す。
+//   ※偏りすぎると得意側が錆びるため、最大75:25までに制限する（standard設定）。
+//   ※通常モードは公平性のため常に50/50（この関数は特訓モードでのみ呼ばれる）。
+const STAGE3_DIR_BIAS_MAX = 0.75; // 苦手側に寄せる上限（0.5=偏りなし / 0.75=最大3:1）
+
+// 方向（'up' | 'down'）の総合的な苦手度を 0〜1 で返す。大きいほど苦手。
+// 統計が十分に無い場合は中間値0.5（＝偏りなし）を返す。
+function getStage3DirectionWeakness(dir) {
+  const s3 = noteStatsByStage[3];
+  let attempts = 0, correct = 0, totalTime = 0, correctCount = 0;
+  Object.keys(s3).forEach(key => {
+    if (key.indexOf(dir + ':') !== 0) return;
+    const st = s3[key];
+    if (!st) return;
+    attempts += st.attempts;
+    correct += st.correct;
+    totalTime += st.totalTime;
+    correctCount += st.correct;
+  });
+  if (attempts < 5) return 0.5; // データ不足時は偏らせない
+  const missRate = 1 - (correct / attempts);              // 0〜1（高いほど苦手）
+  const avgTime = correctCount > 0 ? (totalTime / correctCount) : 1200;
+  const timeFactor = Math.min(avgTime / 1600, 1);          // 0〜1（遅いほど苦手）
+  return missRate * 0.7 + timeFactor * 0.3;                // 正答率を主、反応速度を従とする
+}
+
+// 苦手度に応じて基準音（'C'=上行 / 'HighC'=下行）を抽選する
+function pickStage3Reference() {
+  const upW = getStage3DirectionWeakness('up');
+  const downW = getStage3DirectionWeakness('down');
+  const sum = upW + downW;
+  // 下行が選ばれる確率（両方0なら0.5）
+  let pDown = (sum > 0) ? (downW / sum) : 0.5;
+  // 上限・下限でクランプして偏りすぎを防ぐ（最大75:25）
+  pDown = Math.max(1 - STAGE3_DIR_BIAS_MAX, Math.min(STAGE3_DIR_BIAS_MAX, pDown));
+  return (Math.random() < pDown) ? 'HighC' : 'C';
+}
+
 // ★ ステージ別スコア補正倍率：ステージが上がるほど純粋に難しくなり得点が伸びにくくなるため、
 //   同程度の実力ならステージ1に近いスコアが出るように底上げする。
 //   ただしステージ1の記録が簡単に抜かれないよう、完全に同等にはせず控えめに設定している。
@@ -970,6 +1212,18 @@ function getHighlightKeyForNote(note) {
 
 function updateKeyboardUI() { updateDifficulty(); }
 
+// ==== ★ 鍵盤モード（表示する鍵盤の範囲）の永続化 ====
+// 【バグ修正】従来は保存処理が無く、リロードのたびにHTMLの初期値（1オクターブ）へ
+// 戻ってしまっていた。楽器・表記などと同様に選択を保存し、次回起動時に復元する。
+// ※値 'pc'/'mobile' はlocalStorageの互換性維持のためそのまま使う（表示名のみ変更）。
+//   出題条件は鍵盤モードに関わらず共通なので、これは純粋に「入力レイアウトの好み」の設定。
+function handleKeyboardModeChange() {
+  const v = document.getElementById('keyboard-mode-select').value;
+  localStorage.setItem('saxEarTrainKeyboardMode', v);
+  updateKeyboardUI();
+  updateGameStatusLine();
+}
+
 // ==== ★ スタート画面 / ステージ選択 / モーダル 制御 ====
 // ★ 各ステージは「直前のステージで規定スコア」を出すと解放される
 //   （STAGE2: STAGE1で70,000点 / STAGE3: STAGE2で150,000点 / STAGE4: STAGE3で220,000点）
@@ -1351,7 +1605,11 @@ function nextQuestion() {
   if (currentStage === 4) {
     referenceNoteName = stage4ReferencePool[Math.floor(Math.random() * stage4ReferencePool.length)];
   } else if (currentStage === 3) {
-    referenceNoteName = stage3ReferencePair[Math.floor(Math.random() * stage3ReferencePair.length)];
+    // ★ 苦手特訓モードのみ、苦手な方向（上行/下行）が多く出るよう重み付けする。
+    //   通常モードは公平性のため50/50固定。
+    referenceNoteName = isTrainingMode
+      ? pickStage3Reference()
+      : stage3ReferencePair[Math.floor(Math.random() * stage3ReferencePair.length)];
   }
   currentReferenceNote = referenceNoteName;
   const referenceFreq = getFrequency(referenceNoteName);
@@ -1966,6 +2224,12 @@ function endGame() {
     endMsg += `<div style="color:#2ecc71; font-weight:bold; margin-bottom:6px;">🔓 ステージ${n}がアンロックされました！</div>`;
   });
 
+  // ★ 新しく解禁されたBGMがあれば通知する（曲名 / アーティスト名）
+  detectNewlyUnlockedBgms().forEach(bgm => {
+    const artistLine = bgm.artist ? ` / <span style="font-weight:normal;">${escapeHtml(bgm.artist)}</span>` : '';
+    endMsg += `<div style="color:#1abc9c; font-weight:bold; margin-bottom:6px;">🎵 新しいBGMが解禁！ 「${escapeHtml(bgm.title)}」${artistLine}</div>`;
+  });
+
   // ★★★ ランキング送信UIはフルスクリーンモーダルではなく、メッセージエリア内に直接埋め込む。
   //     こうすることで、下の鍵盤（フリープレイ用ピアノ）が隠れず、常に操作できる。
   //     表示するのは「自己ベストを更新したそのリザルト」のみ。
@@ -2351,6 +2615,7 @@ window.addEventListener('keydown', (e) => {
     if (activeTag === 'SELECT' || activeTag === 'INPUT' || activeTag === 'TEXTAREA') return;
     if (document.getElementById('rules-modal-overlay').classList.contains('visible')) return;
     if (document.getElementById('keybind-modal-overlay').classList.contains('visible')) return;
+    if (document.getElementById('bgm-modal-overlay').classList.contains('visible')) return;
     if (document.getElementById('tutorial-overlay').classList.contains('visible')) return;
 
     e.preventDefault();
@@ -2363,6 +2628,7 @@ window.addEventListener('keydown', (e) => {
     if (activeTag === 'SELECT' || activeTag === 'INPUT' || activeTag === 'TEXTAREA') return;
     if (document.getElementById('rules-modal-overlay').classList.contains('visible')) return;
     if (document.getElementById('keybind-modal-overlay').classList.contains('visible')) return;
+    if (document.getElementById('bgm-modal-overlay').classList.contains('visible')) return;
     if (document.getElementById('tutorial-overlay').classList.contains('visible')) return;
 
     e.preventDefault();
@@ -2549,9 +2815,18 @@ function initApp() {
 
   document.getElementById('notation-select').value = notationMode;
   document.getElementById('semitone-mode-select').value = semitoneInputMode;
+
+  // ★ 前回選択した鍵盤モード（表示する鍵盤の範囲）を復元する。
+  //   保存が無ければHTMLのデフォルト（1オクターブ）のまま。不正値は無視する。
+  const savedKbMode = localStorage.getItem('saxEarTrainKeyboardMode');
+  if (savedKbMode === 'pc' || savedKbMode === 'mobile') {
+    document.getElementById('keyboard-mode-select').value = savedKbMode;
+  }
   document.getElementById('device-badge').innerText = `判定端末: ${DEVICE_LABELS[deviceType]}`;
   updateNoteLabels();
   updateBgmToggleUI();
+  ensureValidBgmSelection(); // ★ 保存された選択曲が未解禁なら初期曲へ戻す
+  applyBgmSource();          // ★ 選択中の曲を<audio>へ反映する
   rebuildKeyMaps();
   updateKeyHintLabels();
   updateHistoryUI();

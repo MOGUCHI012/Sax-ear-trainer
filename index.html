@@ -6,7 +6,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=M+PLUS+Rounded+1c:wght@700;900&display=swap" rel="stylesheet">
-<title>Transposing Ear Training - V42</title>
+<title>Transposing Ear Training - V46</title>
 
 <!-- ★ PWA対応：ホーム画面に追加するとブラウザUI無しの全画面アプリとして起動できる -->
 <link rel="manifest" href="manifest.json">
@@ -21,7 +21,7 @@
 <!-- ★ CSSファイルを外部から読み込む
      ?v= はキャッシュバスター。ブラウザ/PWAが古いファイルを配信し続ける問題の対策で、
      JS/CSSを更新したら必ずこの番号（とタイトルのV表記）を上げること。 -->
-<link rel="stylesheet" href="style.css?v=42">
+<link rel="stylesheet" href="style.css?v=46">
 </head>
 <body>
  
@@ -50,7 +50,11 @@
 </div>
  
 <!-- ==== ★ BGM ==== -->
-<audio id="bgm-audio" src="jazz-bgm.mp3" loop preload="auto"></audio>
+<!-- ==== ★ BGM ====
+     preload="none"：音源が複数あるため、初回読み込みで全曲を先読みしないようにする。
+     再生時（タップしてスタート後）に初めてダウンロードが始まる。
+     src はJS側(applyBgmSource)が選択中の曲に差し替えるため、ここでは初期曲を指定する。 -->
+<audio id="bgm-audio" src="The_Basie_Twist.mp3" loop preload="none"></audio>
  
 <div id="app-container">
   <!-- ★サイドバー（左側） -->
@@ -102,10 +106,10 @@
       </div>
  
       <button class="link-btn" onpointerdown="event.preventDefault(); showRulesModal();">📖 詳しいルールを見る (How to play)</button>
-      <button class="link-btn" onclick="showKeybindModal();">⌨️ キー割り当てをカスタマイズ (PC)</button>
+      <button class="link-btn" onclick="showKeybindModal();">⌨️ キー割り当てをカスタマイズ</button>
       <button class="link-btn" onclick="openPracticePiano();">🎹 練習用ピアノ</button>
       <br>
-      <button id="bgm-toggle-btn" onclick="toggleBGM();">🔊 BGM: ON</button>
+      <button id="bgm-toggle-btn" onclick="showBgmModal();">🎵 BGM</button>
  
       <div class="stage-select">
         <div class="stage-card selected" id="stage-1-card" onpointerdown="event.preventDefault(); selectStage(1);">
@@ -144,9 +148,9 @@
           <option value="Eb">E♭管 (アルト等)</option>
           <option value="F">F管 (ホルン等)</option>
         </select>
-        <select id="keyboard-mode-select" class="game-setting" onchange="updateKeyboardUI()">
-          <option value="pc" selected>鍵盤: PC (1オクターブ)</option>
-          <option value="mobile">鍵盤: スマホ (拡張レンジ)</option>
+        <select id="keyboard-mode-select" class="game-setting" onchange="handleKeyboardModeChange()">
+          <option value="pc" selected>鍵盤: 1オクターブ</option>
+          <option value="mobile">鍵盤: 広い音域</option>
         </select>
         <select id="notation-select" class="game-setting" onchange="handleNotationChange()">
           <option value="solfege" selected>表記: ドレミ</option>
@@ -305,7 +309,8 @@
       ・<strong>3連続正解</strong>で出題される音が<strong>2つ</strong>増え、ミスすると<strong>1つ</strong>減ります（STAGE 3は上下の基準音それぞれの近くから<strong>1音ずつ</strong>広がり、ミスした側の範囲だけが1音減ります）。<br>
       ・間違えた時は<strong>正解の鍵盤が緑色</strong>に光ります。<br>
       ・<strong>オクターブは区別しません。</strong>出題が「ド↑」でも1オクターブ低い「ド」を押せば正解です。<br>
-      ・出題される音の範囲は<strong>鍵盤モード（PC/スマホ）に関わらず同一</strong>です。1オクターブ鍵盤に無い音（レ↑など）が出題された時は、同じ音名の鍵盤（レ）で回答してください。<br>
+      ・出題される音の範囲は<strong>選んだ鍵盤の広さに関わらず同一</strong>です。1オクターブ鍵盤に無い音（レ↑など）が出題された時は、同じ音名の鍵盤（レ）で回答してください。<br>
+      ・ヘッダーの「鍵盤」設定で、表示する鍵盤を<strong>1オクターブ</strong>（コンパクトで押しやすい）と<strong>広い音域</strong>（実際の音の高さで押せる）から選べます。スマホでも1オクターブが好みならそちらで構いません。<br>
       ・STAGE 3・4では基準音が鳴る際、<strong>対象の鍵盤が黄色く光り</strong>、テキストでも音名をお知らせします。<br>
       ・各ステージの出題範囲・スコア倍率・解放条件は、スタート画面の<strong>各ステージカードの「ルール」欄</strong>をご覧ください。<br>
       <div class="rule-section-title">⚡ スコアとコンボ</div>
@@ -328,6 +333,7 @@
       ・<strong>🎯 苦手特訓モード</strong>：<strong>時間制限なし・最初から全音開放</strong>の練習モードです。苦手な音ほど出題確率が上がります。左上の<strong>🔊 もう一度聞く</strong>で問題を何度でも聞き直せます。右上の<strong>🏁 特訓終了</strong>でいつでも終了でき、終了後に今回ミスした音が表示されます。スコア・ランキング・履歴への記録はありません。<br>
       ・プレイ終了後のリザルトに<strong>今回ミスした音のワースト3</strong>が表示されます。次の狙いどころにどうぞ。<br>
       <div class="rule-section-title">💡 その他</div>
+      ・<strong>🎵 BGM</strong>：スタート画面のBGMボタンから、ON/OFFの切り替えと曲の選択ができます。<strong>ステージを解禁すると新しい曲が増えます。</strong><br>
       ・<strong>ゲーム終了後も鍵盤は鳴らせます。</strong>スコアに影響しないので音の確認に自由に使えます。<br>
       ・スマホは横画面推奨ですが、縦画面のままでもプレイできます。
     </div>
@@ -335,6 +341,21 @@
   </div>
 </div>
  
+<!-- ==== ★ BGM選択モーダル（ON/OFF＋解禁済み楽曲の選択）==== -->
+<div id="bgm-modal-overlay" class="modal-overlay" onpointerdown="if(event.target===this) closeBgmModal();">
+  <div class="modal-content">
+    <h3>🎵 BGM</h3>
+    <button id="bgm-modal-toggle-btn" onclick="toggleBGM();">🔊 BGM: ON</button>
+    <p style="font-size:0.8em; color:#95a5a6; margin: 12px 0 6px;">ステージを解禁すると新しい曲が増えていきます。</p>
+    <div id="bgm-list"></div>
+    <p class="bgm-license">
+      🎼 収録楽曲はすべて <strong>CC0 1.0 Universal（パブリックドメイン）</strong> として公開されている音源です。<br>
+      Count Basie And His Orchestra ／ Duke Ellington And His Orchestra ／ Stan Kenton And His Orchestra
+    </p>
+    <button class="action-btn" onpointerdown="event.preventDefault(); closeBgmModal();" style="width:100%; margin-top:14px;">閉じる</button>
+  </div>
+</div>
+
 <div id="keybind-modal-overlay" class="modal-overlay" onpointerdown="if(event.target===this) closeKeybindModal();">
   <div class="modal-content">
     <h3>⌨️ キー割り当てをカスタマイズ</h3>
@@ -347,6 +368,6 @@
   </div>
 </div>
  
-<script src="script.js?v=42"></script>
+<script src="script.js?v=46"></script>
 </body>
 </html>

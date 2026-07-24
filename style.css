@@ -317,6 +317,36 @@ button.action-btn { padding: 15px 30px; font-size: 1.2em; background-color: #e74
 }
 #bgm-toggle-btn.bgm-off { border-color: #7f8c8d; color: #7f8c8d; background: rgba(127,140,141,0.1); }
 
+/* ==== ★ BGM選択モーダル ==== */
+#bgm-modal-toggle-btn {
+  display: block; width: 100%; box-sizing: border-box;
+  background: rgba(26, 188, 156, 0.15); border: 1px solid #1abc9c; color: #1abc9c;
+  padding: 11px; border-radius: 8px; font-size: 0.95em; font-weight: bold;
+  cursor: pointer; touch-action: manipulation;
+}
+#bgm-modal-toggle-btn.bgm-off { border-color: #7f8c8d; color: #7f8c8d; background: rgba(127,140,141,0.1); }
+.bgm-item {
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 8px; padding: 10px 12px; margin-bottom: 8px;
+  cursor: pointer; touch-action: manipulation; transition: border-color 0.2s, background 0.2s;
+}
+.bgm-item:active { background: rgba(255,255,255,0.12); }
+.bgm-item.selected { border-color: #1abc9c; background: rgba(26,188,156,0.15); }
+/* ロック中は選択不可。曲名は伏せ字（？？？）で表示される */
+.bgm-item.locked { opacity: 0.55; filter: grayscale(0.6); cursor: not-allowed; }
+.bgm-item.locked:active { background: rgba(255,255,255,0.06); }
+.bgm-item-main { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; }
+.bgm-check { color: #1abc9c; font-size: 0.85em; }
+.bgm-title { font-weight: bold; font-size: 1em; }
+.bgm-artist { font-size: 0.78em; color: #95a5a6; }
+.bgm-lock { font-size: 0.75em; color: #e67e22; margin-top: 5px; }
+/* ★ CC0音源の出典表記（ライセンス上の義務はないが、利用マナーとして明示する） */
+.bgm-license {
+  font-size: 0.72em; color: #7f8c8d; line-height: 1.7; margin: 14px 0 0;
+  padding-top: 10px; border-top: 1px dashed rgba(255,255,255,0.15);
+}
+.bgm-license strong { color: #95a5a6; }
+
 /* ==== ★ リザルト表示（今回の弱点サマリー・操作ボタン）==== */
 .result-score-line { font-size: 1.25em; font-weight: bold; margin-bottom: 4px; }
 /* 操作ボタンはリザルト上部に横並びで置き、狭い画面でも必ず押せるようにする */
