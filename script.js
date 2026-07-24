@@ -56,10 +56,18 @@ let bgmFadeInterval = null;
 //   ⚠️GitHub Pagesは大文字・小文字を区別するため、実際のフォルダ名と完全に一致させること。
 //   同じ階層に直接置く場合は '' （空文字）にする。
 const BGM_DIR = 'BGM/';
+
+// ★ ファイル名にスペースや括弧が含まれるため、URLとして安全な形に変換してから使う。
+//   （スペースをそのまま指定すると環境によっては読み込みに失敗する）
+//   file には「実際のファイル名そのまま」を書き、エンコードはこの関数に任せること。
+function getBgmSrc(bgm) {
+  return BGM_DIR + encodeURIComponent(bgm.file);
+}
+
 const BGM_LIBRARY = [
   {
     id: 'bgm1',
-    file: BGM_DIR + 'The_Basie_Twist.mp3',
+    file: 'The Basie Twist.mp3',
     title: 'The Basie Twist',
     artist: 'Count Basie And His Orchestra',
     year: 1961,
@@ -67,7 +75,7 @@ const BGM_LIBRARY = [
   },
   {
     id: 'bgm2',
-    file: BGM_DIR + 'Eager_Beaver.mp3',
+    file: 'Eager Beaver.mp3',
     title: 'Eager Beaver',
     artist: 'Stan Kenton And His Orchestra',
     year: 1943,
@@ -75,7 +83,7 @@ const BGM_LIBRARY = [
   },
   {
     id: 'bgm3',
-    file: BGM_DIR + 'Take_The_A_Train.mp3',
+    file: 'Take The A Train.mp3',
     title: 'Take The "A" Train',
     artist: 'Duke Ellington And His Orchestra',
     year: 1960,
@@ -83,7 +91,7 @@ const BGM_LIBRARY = [
   },
   {
     id: 'bgm4',
-    file: BGM_DIR + 'Artistry_Jumps__alt_.mp3',
+    file: 'Artistry Jumps (alt).mp3',
     title: 'Artistry Jumps (alt)',
     artist: 'Stan Kenton And His Orchestra',
     year: 1945,
@@ -91,7 +99,7 @@ const BGM_LIBRARY = [
   },
   {
     id: 'bgm5',
-    file: BGM_DIR + 'Basie.mp3',
+    file: 'Basie.mp3',
     title: 'Basie',
     artist: 'Count Basie And His Orchestra',
     year: 1961,
@@ -99,7 +107,7 @@ const BGM_LIBRARY = [
   },
   {
     id: 'bgm6',
-    file: BGM_DIR + 'Artistry_In_Rhythm__Production_on_theme_.mp3',
+    file: 'Artistry In Rhythm (Production on theme).mp3',
     title: 'Artistry In Rhythm (Production on theme)',
     artist: 'Stan Kenton And His Orchestra',
     year: 1943,
@@ -152,11 +160,12 @@ function ensureValidBgmSelection() {
 // ★ 選択中の曲を<audio>に反映する。再生中なら続けて新しい曲を鳴らす。
 function applyBgmSource() {
   const bgm = getBgmById(currentBgmId);
-  const newSrc = bgm.file;
-  // 既に同じ曲なら何もしない（srcは絶対URLになるため末尾一致で判定する）
+  const newSrc = getBgmSrc(bgm); // ★ スペース等をエンコードしたパス
+  // 既に同じ曲なら何もしない（無用な再読み込みを避ける）
   if (bgmAudio.getAttribute('src') === newSrc) return;
   bgmAudio.setAttribute('src', newSrc);
   bgmAudio.load();
+  setBgmError(''); // 曲を切り替えたので直前のエラー表示はクリアする
 }
 
 // ★ タップしてスタート画面：ここでAudioContextとBGMの両方を解禁する
@@ -229,12 +238,46 @@ function finishTutorial() {
   playBGM();
 }
 
+// ==== ★ BGMの読み込み・再生エラーの可視化（診断用）====
+// 従来は play() の失敗を握りつぶしていたため、音源が404でも「ただ鳴らない」だけで
+// 原因が分からなかった。エラー内容を記録し、BGMモーダル内に表示する。
+let bgmLastError = '';
+
+function setBgmError(msg) {
+  bgmLastError = msg;
+  console.error('[BGM] ' + msg);
+  const el = document.getElementById('bgm-status-msg');
+  if (el) el.innerHTML = msg ? `<span style="color:#e74c3c;">⚠️ ${escapeHtml(msg)}</span>` : '';
+}
+
+// ★ <audio>の読み込み失敗（404・形式非対応など）を捕捉する
+bgmAudio.addEventListener('error', () => {
+  const src = bgmAudio.currentSrc || bgmAudio.getAttribute('src') || '(未設定)';
+  const err = bgmAudio.error;
+  let reason = '不明なエラー';
+  if (err) {
+    if (err.code === 4) reason = 'ファイルが見つからない、または形式が非対応';
+    else if (err.code === 2) reason = 'ネットワークエラー';
+    else if (err.code === 3) reason = 'デコードに失敗';
+    else if (err.code === 1) reason = '読み込みが中断された';
+  }
+  setBgmError(`音源を読み込めません（${reason}）\nパス: ${src}`);
+});
+bgmAudio.addEventListener('playing', () => { setBgmError(''); });
+
 function playBGM() {
   if (!bgmEnabled) return;
   clearInterval(bgmFadeInterval);
   bgmAudio.muted = false;
   try { bgmAudio.volume = BGM_VOLUME; } catch (e) {}
-  bgmAudio.play().catch(() => {}); // 自動再生が拒否された場合も静かに無視する
+  bgmAudio.play().catch((e) => {
+    // ★ 自動再生ポリシーによる拒否は正常な動作なので区別して扱う
+    if (e && e.name === 'NotAllowedError') {
+      console.warn('[BGM] 自動再生がブラウザに拒否されました（画面タップ後に再生されます）');
+    } else {
+      setBgmError('再生に失敗しました: ' + (e && e.message ? e.message : e));
+    }
+  });
 }
 
 // ★ fade=true（ゲーム開始時）は、audio要素の再生自体はpause()せず継続したまま
@@ -321,6 +364,14 @@ function renderBgmModalContent() {
       </div>`;
   });
   listEl.innerHTML = html;
+
+  // ★ 既に発生している読み込みエラーがあれば再表示する（診断用）
+  const statusEl = document.getElementById('bgm-status-msg');
+  if (statusEl) {
+    statusEl.innerHTML = bgmLastError
+      ? `<span style="color:#e74c3c;">⚠️ ${escapeHtml(bgmLastError)}</span>`
+      : '';
+  }
 }
 
 // ★ 曲を選択する。すぐに再生して「選んだ実感」を出す（BGMがONでスタート画面のときのみ）
