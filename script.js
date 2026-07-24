@@ -51,10 +51,15 @@ let bgmFadeInterval = null;
 //   { type: 'score', score: N }    … いずれかのステージでN点以上の自己ベストがあれば使える
 // secret: true の曲は解禁条件も伏せ、詩的なヒントだけを表示する（隠し曲）。
 // ※ロック中はどの曲も曲名を「？？？」で伏せる。
+// ★ 音源ファイルを置いてあるフォルダ。
+//   リポジトリでは index.html と同じ階層の「BGM」フォルダに音源を入れている。
+//   ⚠️GitHub Pagesは大文字・小文字を区別するため、実際のフォルダ名と完全に一致させること。
+//   同じ階層に直接置く場合は '' （空文字）にする。
+const BGM_DIR = 'BGM/';
 const BGM_LIBRARY = [
   {
     id: 'bgm1',
-    file: 'The_Basie_Twist.mp3',
+    file: BGM_DIR + 'The_Basie_Twist.mp3',
     title: 'The Basie Twist',
     artist: 'Count Basie And His Orchestra',
     year: 1961,
@@ -62,7 +67,7 @@ const BGM_LIBRARY = [
   },
   {
     id: 'bgm2',
-    file: 'Eager_Beaver.mp3',
+    file: BGM_DIR + 'Eager_Beaver.mp3',
     title: 'Eager Beaver',
     artist: 'Stan Kenton And His Orchestra',
     year: 1943,
@@ -70,7 +75,7 @@ const BGM_LIBRARY = [
   },
   {
     id: 'bgm3',
-    file: 'Take_The_A_Train.mp3',
+    file: BGM_DIR + 'Take_The_A_Train.mp3',
     title: 'Take The "A" Train',
     artist: 'Duke Ellington And His Orchestra',
     year: 1960,
@@ -78,7 +83,7 @@ const BGM_LIBRARY = [
   },
   {
     id: 'bgm4',
-    file: 'Artistry_Jumps__alt_.mp3',
+    file: BGM_DIR + 'Artistry_Jumps__alt_.mp3',
     title: 'Artistry Jumps (alt)',
     artist: 'Stan Kenton And His Orchestra',
     year: 1945,
@@ -86,7 +91,7 @@ const BGM_LIBRARY = [
   },
   {
     id: 'bgm5',
-    file: 'Basie.mp3',
+    file: BGM_DIR + 'Basie.mp3',
     title: 'Basie',
     artist: 'Count Basie And His Orchestra',
     year: 1961,
@@ -94,7 +99,7 @@ const BGM_LIBRARY = [
   },
   {
     id: 'bgm6',
-    file: 'Artistry_In_Rhythm__Production_on_theme_.mp3',
+    file: BGM_DIR + 'Artistry_In_Rhythm__Production_on_theme_.mp3',
     title: 'Artistry In Rhythm (Production on theme)',
     artist: 'Stan Kenton And His Orchestra',
     year: 1943,
@@ -358,12 +363,16 @@ function detectNewlyUnlockedBgms() {
 
 // ★ 初回起動時（記録が無い状態）は、既に解禁済みの曲を「通知済み」として記録しておく。
 //   こうしないと、既存プレイヤーが次のリザルトで過去の解禁分をまとめて通知されてしまう。
-(function initUnlockedBgmRecord() {
+//   ⚠️この処理は必ず initApp() から呼ぶこと。
+//   ここで即時実行(IIFE)すると、まだ宣言されていない bestScoreByStage 等を
+//   isBgmUnlocked 経由で参照して ReferenceError(TDZ) となり、
+//   スクリプトのトップレベル実行が停止して「ゲームが始まらない」不具合になる。
+function initUnlockedBgmRecord() {
   if (localStorage.getItem('saxEarTrainUnlockedBgmIds') === null) {
     unlockedBgmIds = BGM_LIBRARY.filter(isBgmUnlocked).map(b => b.id);
     localStorage.setItem('saxEarTrainUnlockedBgmIds', JSON.stringify(unlockedBgmIds));
   }
-})();
+}
 
 // ==== ★ バックグラウンド移行時のBGM停止（バグ修正・強化版）====
 // スマホで別アプリへ切り替えたり、タブを閉じたり、画面をロックしたりしても
@@ -2825,6 +2834,7 @@ function initApp() {
   document.getElementById('device-badge').innerText = `判定端末: ${DEVICE_LABELS[deviceType]}`;
   updateNoteLabels();
   updateBgmToggleUI();
+  initUnlockedBgmRecord();   // ★ 解禁記録の初期化（TDZ回避のため必ずここで実行する）
   ensureValidBgmSelection(); // ★ 保存された選択曲が未解禁なら初期曲へ戻す
   applyBgmSource();          // ★ 選択中の曲を<audio>へ反映する
   rebuildKeyMaps();

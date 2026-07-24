@@ -6,7 +6,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=M+PLUS+Rounded+1c:wght@700;900&display=swap" rel="stylesheet">
-<title>Transposing Ear Training - V46</title>
+<title>Transposing Ear Training - V47</title>
 
 <!-- ★ PWA対応：ホーム画面に追加するとブラウザUI無しの全画面アプリとして起動できる -->
 <link rel="manifest" href="manifest.json">
@@ -21,7 +21,7 @@
 <!-- ★ CSSファイルを外部から読み込む
      ?v= はキャッシュバスター。ブラウザ/PWAが古いファイルを配信し続ける問題の対策で、
      JS/CSSを更新したら必ずこの番号（とタイトルのV表記）を上げること。 -->
-<link rel="stylesheet" href="style.css?v=46">
+<link rel="stylesheet" href="style.css?v=47">
 </head>
 <body>
  
@@ -54,7 +54,7 @@
      preload="none"：音源が複数あるため、初回読み込みで全曲を先読みしないようにする。
      再生時（タップしてスタート後）に初めてダウンロードが始まる。
      src はJS側(applyBgmSource)が選択中の曲に差し替えるため、ここでは初期曲を指定する。 -->
-<audio id="bgm-audio" src="The_Basie_Twist.mp3" loop preload="none"></audio>
+<audio id="bgm-audio" src="BGM/The_Basie_Twist.mp3" loop preload="none"></audio>
  
 <div id="app-container">
   <!-- ★サイドバー（左側） -->
@@ -368,6 +368,6 @@
   </div>
 </div>
  
-<script src="script.js?v=46"></script>
+<script src="script.js?v=47"></script>
 </body>
 </html>
