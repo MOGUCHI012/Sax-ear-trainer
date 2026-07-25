@@ -1,0 +1,13 @@
+{
+  "name": "移調楽器 音感トレーニング",
+  "short_name": "Ear Trainer",
+  "description": "サックス・吹奏楽奏者向けの相対音感トレーニング。基準音のあとに鳴る音を聴き分けて鍵盤で答えるゲームです。",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#2c3e50",
+  "theme_color": "#1abc9c",
+  "lang": "ja",
+  "icons": []
+}
