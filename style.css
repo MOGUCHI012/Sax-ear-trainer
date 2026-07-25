@@ -325,6 +325,11 @@ button.action-btn { padding: 15px 30px; font-size: 1.2em; background-color: #e74
   cursor: pointer; touch-action: manipulation;
 }
 #bgm-modal-toggle-btn.bgm-off { border-color: #7f8c8d; color: #7f8c8d; background: rgba(127,140,141,0.1); }
+/* ★ 音量スライダー（古い録音は音量が小さいため、ユーザーが調整できるようにする） */
+.bgm-volume-row { margin: 12px 0 4px; }
+.bgm-volume-row label { display: block; font-size: 0.8em; color: #bdc3c7; margin-bottom: 6px; }
+.bgm-volume-row #bgm-volume-label { color: #1abc9c; font-weight: bold; }
+.bgm-volume-row input[type="range"] { width: 100%; touch-action: manipulation; }
 .bgm-item {
   background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15);
   border-radius: 8px; padding: 10px 12px; margin-bottom: 8px;

@@ -6,11 +6,14 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=M+PLUS+Rounded+1c:wght@700;900&display=swap" rel="stylesheet">
-<title>Transposing Ear Training - V49</title>
+<title>Transposing Ear Training - V51</title>
 
 <!-- ★ PWA対応：ホーム画面に追加するとブラウザUI無しの全画面アプリとして起動できる -->
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1abc9c">
+<!-- ★ ファビコン：外部ファイルを置かずに済むよう、SVGをdata URIで直接指定している
+     （未指定だとブラウザが favicon.ico を探しに行き、404がコンソールに出るため） -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%232c3e50'/%3E%3Ctext x='32' y='45' font-size='38' text-anchor='middle'%3E%F0%9F%8E%B7%3C/text%3E%3C/svg%3E">
 <!-- TODO: リリース時にアイコン(icon-192.png / icon-512.png)を用意して、下の行と manifest.json のicons欄を有効化してください -->
 <!-- <link rel="apple-touch-icon" href="icon-192.png"> -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -21,7 +24,7 @@
 <!-- ★ CSSファイルを外部から読み込む
      ?v= はキャッシュバスター。ブラウザ/PWAが古いファイルを配信し続ける問題の対策で、
      JS/CSSを更新したら必ずこの番号（とタイトルのV表記）を上げること。 -->
-<link rel="stylesheet" href="style.css?v=49">
+<link rel="stylesheet" href="style.css?v=51">
 </head>
 <body>
  
@@ -346,9 +349,15 @@
   <div class="modal-content">
     <h3>🎵 BGM</h3>
     <button id="bgm-modal-toggle-btn" onclick="toggleBGM();">🔊 BGM: ON</button>
+    <div class="bgm-volume-row">
+      <label for="bgm-volume-slider">音量 <span id="bgm-volume-label">40%</span></label>
+      <input type="range" id="bgm-volume-slider" min="0" max="100" step="5" value="40"
+             oninput="handleBgmVolumeChange(this.value)">
+    </div>
     <p style="font-size:0.8em; color:#95a5a6; margin: 12px 0 6px;">ステージを解禁すると新しい曲が増えていきます。</p>
     <div id="bgm-list"></div>
     <div id="bgm-status-msg" style="font-size:0.78em; white-space:pre-wrap; word-break:break-all; margin-top:10px; line-height:1.6;"></div>
+    <button class="link-btn" onclick="showBgmDiagnostics();" style="width:100%; box-sizing:border-box; text-align:center; margin-top:8px; margin-bottom:0;">🔍 音が出ない時はここを押す（状態を表示）</button>
     <p class="bgm-license">
       🎼 収録楽曲はすべて <strong>CC0 1.0 Universal（パブリックドメイン）</strong> として公開されている音源です。<br>
       Count Basie And His Orchestra ／ Duke Ellington And His Orchestra ／ Stan Kenton And His Orchestra
@@ -369,6 +378,6 @@
   </div>
 </div>
  
-<script src="script.js?v=49"></script>
+<script src="script.js?v=51"></script>
 </body>
 </html>

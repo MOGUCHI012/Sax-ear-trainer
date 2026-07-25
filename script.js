@@ -37,10 +37,27 @@ document.addEventListener('touchmove', function (e) {
 
 // ==== ★ BGM（バックグラウンドミュージック）制御 ====
 const bgmAudio = document.getElementById('bgm-audio');
-const BGM_VOLUME = 0.11; // ★ 音量を半分程度に引き下げ
-bgmAudio.volume = BGM_VOLUME;
+// ★ 音量はユーザーが調整でき、設定は保存される。
+//   収録楽曲は1943〜1961年の録音で、現代の楽曲よりマスタリングレベルが低いため、
+//   デフォルトを高め（40%）にしている。小さすぎて聞こえない、という事故を防ぐため。
+const BGM_VOLUME_DEFAULT = 0.4;
+function loadBgmVolume() {
+  const v = parseFloat(localStorage.getItem('saxEarTrainBgmVolume'));
+  return (isFinite(v) && v >= 0 && v <= 1) ? v : BGM_VOLUME_DEFAULT;
+}
+let bgmVolume = loadBgmVolume();
+bgmAudio.volume = bgmVolume;
 let bgmEnabled = (localStorage.getItem('saxEarTrainBgmEnabled') !== 'false'); // デフォルトON
 let bgmFadeInterval = null;
+
+// ★ 音量スライダーから呼ばれる。即座に反映し、設定を保存する。
+function handleBgmVolumeChange(value) {
+  bgmVolume = Math.max(0, Math.min(1, parseFloat(value) / 100));
+  localStorage.setItem('saxEarTrainBgmVolume', String(bgmVolume));
+  try { bgmAudio.volume = bgmVolume; } catch (e) {}
+  const label = document.getElementById('bgm-volume-label');
+  if (label) label.innerText = Math.round(bgmVolume * 100) + '%';
+}
 
 // ==== ★ BGMライブラリ（解禁システム）====
 // 音源はすべて「CC0 1.0 Universal（パブリックドメイン）」。
@@ -245,7 +262,9 @@ let bgmLastError = '';
 
 function setBgmError(msg) {
   bgmLastError = msg;
-  console.error('[BGM] ' + msg);
+  // ★ クリア時（空文字）はログを出さない。
+  //   （再生開始やソース切替のたびに空の [BGM] ログが出てしまうため）
+  if (msg) console.error('[BGM] ' + msg);
   const el = document.getElementById('bgm-status-msg');
   if (el) el.innerHTML = msg ? `<span style="color:#e74c3c;">⚠️ ${escapeHtml(msg)}</span>` : '';
 }
@@ -269,7 +288,7 @@ function playBGM() {
   if (!bgmEnabled) return;
   clearInterval(bgmFadeInterval);
   bgmAudio.muted = false;
-  try { bgmAudio.volume = BGM_VOLUME; } catch (e) {}
+  try { bgmAudio.volume = bgmVolume; } catch (e) {}
   bgmAudio.play().catch((e) => {
     // ★ 自動再生ポリシーによる拒否は正常な動作なので区別して扱う
     if (e && e.name === 'NotAllowedError') {
@@ -293,7 +312,7 @@ function stopBGM(fade = true) {
     // ユーザーが明示的にOFFにした場合は完全停止する
     bgmAudio.pause();
     bgmAudio.muted = false;
-    try { bgmAudio.volume = BGM_VOLUME; } catch (e) {}
+    try { bgmAudio.volume = bgmVolume; } catch (e) {}
     return;
   }
   // ★ ゲーム開始時：最優先事項として、必ず即座に無音化する
@@ -324,6 +343,27 @@ function updateBgmToggleUI() {
   btn.classList.toggle('bgm-off', !bgmEnabled);
 }
 
+// ★ BGMの詳細な状態を表示する（診断用）。
+//   「playingイベントは出ているのに聞こえない」等の切り分けに使う。
+function showBgmDiagnostics() {
+  const el = document.getElementById('bgm-status-msg');
+  if (!el) return;
+  const a = bgmAudio;
+  const readyStateText = ['0 データなし', '1 メタデータのみ', '2 現在位置のみ再生可', '3 少し先まで再生可', '4 最後まで再生可'][a.readyState] || a.readyState;
+  const networkStateText = ['0 未初期化', '1 読み込み不要', '2 読み込み中', '3 音源が見つからない'][a.networkState] || a.networkState;
+  const lines = [
+    'ファイル: ' + (a.currentSrc || '(未設定)'),
+    '再生状態: ' + (a.paused ? '⏸ 停止中' : '▶ 再生中'),
+    '曲の長さ: ' + (isFinite(a.duration) ? a.duration.toFixed(1) + '秒' : '不明（読み込めていない可能性）'),
+    '再生位置: ' + a.currentTime.toFixed(1) + '秒',
+    '音量: ' + Math.round(a.volume * 100) + '%' + (a.muted ? '（ミュート中）' : ''),
+    '読み込み: ' + readyStateText,
+    '通信状態: ' + networkStateText,
+    'BGM設定: ' + (bgmEnabled ? 'ON' : 'OFF')
+  ];
+  el.innerHTML = '<span style="color:#1abc9c;">' + escapeHtml(lines.join('\n')) + '</span>';
+}
+
 // ==== ★ BGM選択モーダル ====
 function showBgmModal() {
   renderBgmModalContent();
@@ -340,6 +380,12 @@ function renderBgmModalContent() {
     stateBtn.innerText = bgmEnabled ? '🔊 BGM: ON' : '🔇 BGM: OFF';
     stateBtn.classList.toggle('bgm-off', !bgmEnabled);
   }
+
+  // ★ 音量スライダーに現在の設定を反映する
+  const volSlider = document.getElementById('bgm-volume-slider');
+  const volLabel = document.getElementById('bgm-volume-label');
+  if (volSlider) volSlider.value = Math.round(bgmVolume * 100);
+  if (volLabel) volLabel.innerText = Math.round(bgmVolume * 100) + '%';
 
   const listEl = document.getElementById('bgm-list');
   if (!listEl) return;
