@@ -190,6 +190,15 @@ function handleTapToStart() {
   document.getElementById('tap-to-start-overlay').style.display = 'none';
   initAudio(); // ★ AudioContextの解禁自体は初回・2回目以降どちらも必ず行う
 
+  // ★ BGMの先読みを開始する（preload="none"のため、ここで読み込みを始めておかないと
+  //   実際の再生時に読み込み待ちが発生し、再生開始が数秒遅れてしまう）。
+  //   タップという確実なユーザー操作の中で load() を呼ぶことで、
+  //   チュートリアル表示中や画面遷移中に読み込みを済ませられる。
+  if (bgmEnabled) {
+    applyBgmSource();
+    bgmAudio.load();
+  }
+
   const hasSeenTutorial = localStorage.getItem('saxEarTrainHasSeenTutorial') === 'true';
   if (hasSeenTutorial) {
     updateBgmToggleUI();
@@ -289,14 +298,24 @@ function playBGM() {
   clearInterval(bgmFadeInterval);
   bgmAudio.muted = false;
   try { bgmAudio.volume = bgmVolume; } catch (e) {}
-  bgmAudio.play().catch((e) => {
-    // ★ 自動再生ポリシーによる拒否は正常な動作なので区別して扱う
+
+  const tryPlay = () => bgmAudio.play().catch((e) => {
     if (e && e.name === 'NotAllowedError') {
       console.warn('[BGM] 自動再生がブラウザに拒否されました（画面タップ後に再生されます）');
     } else {
       setBgmError('再生に失敗しました: ' + (e && e.message ? e.message : e));
     }
   });
+
+  // ★ preload="none"で未読み込みの場合、play()を即呼ぶより
+  //   「再生できる状態になってから」鳴らす方が、頭切れや無音のまま進むのを防げる。
+  //   readyStateが2以上（現在位置を再生可）なら即再生、それ未満なら読み込み完了を待つ。
+  if (bgmAudio.readyState >= 2) {
+    tryPlay();
+  } else {
+    bgmAudio.addEventListener('canplay', tryPlay, { once: true });
+    bgmAudio.load(); // 念のため読み込みを促す
+  }
 }
 
 // ★ fade=true（ゲーム開始時）は、audio要素の再生自体はpause()せず継続したまま
