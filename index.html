@@ -6,7 +6,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=M+PLUS+Rounded+1c:wght@700;900&display=swap" rel="stylesheet">
-<title>Transposing Ear Training - V52</title>
+<title>Transposing Ear Training - V54</title>
 
 <!-- ★ PWA対応：ホーム画面に追加するとブラウザUI無しの全画面アプリとして起動できる -->
 <link rel="manifest" href="manifest.json">
@@ -24,7 +24,7 @@
 <!-- ★ CSSファイルを外部から読み込む
      ?v= はキャッシュバスター。ブラウザ/PWAが古いファイルを配信し続ける問題の対策で、
      JS/CSSを更新したら必ずこの番号（とタイトルのV表記）を上げること。 -->
-<link rel="stylesheet" href="style.css?v=52">
+<link rel="stylesheet" href="style.css?v=54">
 </head>
 <body>
  
@@ -36,6 +36,16 @@
   <p class="tap-warning">※音が流れます</p>
 </div>
  
+<!-- ==== ★ BGMローディング演出 ==== -->
+<div id="bgm-loading-overlay">
+  <div class="bgm-loading-card">
+    <div class="bgm-loading-note">🎵</div>
+    <div class="bgm-loading-text">♪ 準備中...</div>
+    <div class="bgm-loading-bar"><div class="bgm-loading-bar-fill"></div></div>
+    <button id="bgm-loading-skip" class="link-btn" onclick="skipBgmLoading();">スキップ</button>
+  </div>
+</div>
+
 <!-- ==== ★ 初回チュートリアル画面 ==== -->
 <div id="tutorial-overlay">
   <div class="tutorial-card">
@@ -58,6 +68,12 @@
      再生時（タップしてスタート後）に初めてダウンロードが始まる。
      src はJS側(applyBgmSource)が選択中の曲に差し替えるため、ここでは初期曲を指定する。 -->
 <audio id="bgm-audio" src="BGM/The%20Basie%20Twist.mp3" loop preload="none"></audio>
+<!-- ★ iOSサイレントスイッチ対策用の無音ループ音源。
+     iOSは<audio>要素は消音モードでも鳴るが、Web Audio APIは消音モードだと鳴らない。
+     無音の<audio>をループ再生してオーディオセッションを「再生モード」に切り替えると、
+     Web Audio(効果音)も消音モードを無視して鳴るようになる。
+     音源はJS側でdata URI(無音WAV)を生成して割り当てる。 -->
+<audio id="silent-loop-audio" loop preload="auto"></audio>
  
 <div id="app-container">
   <!-- ★サイドバー（左側） -->
@@ -350,11 +366,16 @@
     <h3>🎵 BGM</h3>
     <button id="bgm-modal-toggle-btn" onclick="toggleBGM();">🔊 BGM: ON</button>
     <div class="bgm-volume-row">
-      <label for="bgm-volume-slider">音量 <span id="bgm-volume-label">40%</span></label>
-      <input type="range" id="bgm-volume-slider" min="0" max="100" step="5" value="40"
+      <label for="bgm-volume-slider">音量 <span id="bgm-volume-label">20%</span></label>
+      <input type="range" id="bgm-volume-slider" min="0" max="100" step="5" value="20"
              oninput="handleBgmVolumeChange(this.value)">
     </div>
     <p style="font-size:0.8em; color:#95a5a6; margin: 12px 0 6px;">ステージを解禁すると新しい曲が増えていきます。</p>
+    <div id="bgm-ios-note" style="display:none; font-size:0.75em; color:#e67e22; line-height:1.6; margin: 4px 0 10px; padding: 8px 10px; background: rgba(230,126,34,0.1); border-radius: 6px;">
+      📱 iPhoneの方へ：<br>
+      ・効果音が鳴らない時は<strong>本体横の消音スイッチ（オレンジ）を解除</strong>してください。<br>
+      ・音量はこのスライダーではなく<strong>本体の音量ボタン</strong>で調整してください。
+    </div>
     <div id="bgm-list"></div>
     <div id="bgm-status-msg" style="font-size:0.78em; white-space:pre-wrap; word-break:break-all; margin-top:10px; line-height:1.6;"></div>
     <button class="link-btn" onclick="showBgmDiagnostics();" style="width:100%; box-sizing:border-box; text-align:center; margin-top:8px; margin-bottom:0;">🔍 音が出ない時はここを押す（状態を表示）</button>
@@ -378,6 +399,6 @@
   </div>
 </div>
  
-<script src="script.js?v=52"></script>
+<script src="script.js?v=54"></script>
 </body>
 </html>

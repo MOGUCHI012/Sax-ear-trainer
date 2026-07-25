@@ -40,7 +40,7 @@ const bgmAudio = document.getElementById('bgm-audio');
 // ★ 音量はユーザーが調整でき、設定は保存される。
 //   収録楽曲は1943〜1961年の録音で、現代の楽曲よりマスタリングレベルが低いため、
 //   デフォルトを高め（40%）にしている。小さすぎて聞こえない、という事故を防ぐため。
-const BGM_VOLUME_DEFAULT = 0.4;
+const BGM_VOLUME_DEFAULT = 0.2;
 function loadBgmVolume() {
   const v = parseFloat(localStorage.getItem('saxEarTrainBgmVolume'));
   return (isFinite(v) && v >= 0 && v <= 1) ? v : BGM_VOLUME_DEFAULT;
@@ -189,23 +189,69 @@ function applyBgmSource() {
 function handleTapToStart() {
   document.getElementById('tap-to-start-overlay').style.display = 'none';
   initAudio(); // ★ AudioContextの解禁自体は初回・2回目以降どちらも必ず行う
+  startSilentLoopForIOS(); // ★ iOS消音モードでも効果音を鳴らすため、無音ループを開始（iOS以外は何もしない）
 
-  // ★ BGMの先読みを開始する（preload="none"のため、ここで読み込みを始めておかないと
-  //   実際の再生時に読み込み待ちが発生し、再生開始が数秒遅れてしまう）。
-  //   タップという確実なユーザー操作の中で load() を呼ぶことで、
-  //   チュートリアル表示中や画面遷移中に読み込みを済ませられる。
+  const proceed = () => {
+    const hasSeenTutorial = localStorage.getItem('saxEarTrainHasSeenTutorial') === 'true';
+    if (hasSeenTutorial) {
+      updateBgmToggleUI();
+      playBGM();
+    } else {
+      showTutorial();
+    }
+  };
+
+  // ★ BGMがONなら、再生できる状態になるまでローディング演出を挟む。
+  //   preload="none"のため初回や未キャッシュの曲は読み込みに時間がかかるが、
+  //   ここで待つことで「無音のまま画面が進む」のを防ぎ、待ち時間を演出でごまかす。
+  //   ・既に読み込み済み（キャッシュあり）なら演出は一瞬で消える
+  //   ・時間がかかっても最大待ち時間で自動的に進む（フェイルセーフ）
+  //   ・「スキップ」でいつでも先へ進める
   if (bgmEnabled) {
     applyBgmSource();
-    bgmAudio.load();
+    startBgmLoading(proceed);
+  } else {
+    proceed();
+  }
+}
+
+// ==== ★ BGMローディング演出 ====
+let bgmLoadingDone = false;
+let bgmLoadingFinish = null;
+function startBgmLoading(onReady) {
+  bgmLoadingDone = false;
+  const overlay = document.getElementById('bgm-loading-overlay');
+  const finish = () => {
+    if (bgmLoadingDone) return;
+    bgmLoadingDone = true;
+    bgmAudio.removeEventListener('canplaythrough', onCanPlay);
+    bgmAudio.removeEventListener('canplay', onCanPlay);
+    clearTimeout(failSafe);
+    if (overlay) overlay.classList.remove('visible');
+    onReady();
+  };
+  // 外から押されるスキップ／フェイルセーフ用に保持
+  bgmLoadingFinish = finish;
+
+  const onCanPlay = () => finish();
+
+  // 既に十分読み込めていれば演出を出さずに即進む（キャッシュ済みの通常ケース）
+  if (bgmAudio.readyState >= 3) {
+    onReady();
+    return;
   }
 
-  const hasSeenTutorial = localStorage.getItem('saxEarTrainHasSeenTutorial') === 'true';
-  if (hasSeenTutorial) {
-    updateBgmToggleUI();
-    playBGM();
-  } else {
-    showTutorial();
-  }
+  if (overlay) overlay.classList.add('visible');
+  bgmAudio.addEventListener('canplaythrough', onCanPlay, { once: true });
+  bgmAudio.addEventListener('canplay', onCanPlay, { once: true }); // 早めに再生可になったら進む
+  bgmAudio.load();
+
+  // ★ フェイルセーフ：どれだけ遅くても6秒で先へ進める（回線が非常に遅い/失敗時でも固まらない）
+  var failSafe = setTimeout(finish, 6000);
+}
+
+function skipBgmLoading() {
+  if (bgmLoadingFinish) bgmLoadingFinish();
 }
 
 // ==== ★ 初回チュートリアル（オンボーディング）====
@@ -405,6 +451,18 @@ function renderBgmModalContent() {
   const volLabel = document.getElementById('bgm-volume-label');
   if (volSlider) volSlider.value = Math.round(bgmVolume * 100);
   if (volLabel) volLabel.innerText = Math.round(bgmVolume * 100) + '%';
+
+  // ★ iOSは<audio>のvolume変更が無視され、消音スイッチでWeb Audioが鳴らないため、
+  //   専用の案内を表示し、音量スライダーは無効化する（誤操作で混乱させないため）。
+  const iosNote = document.getElementById('bgm-ios-note');
+  if (deviceType === 'ios') {
+    if (iosNote) iosNote.style.display = 'block';
+    if (volSlider) volSlider.disabled = true;
+    if (volLabel) volLabel.innerText = '本体ボタンで調整';
+  } else {
+    if (iosNote) iosNote.style.display = 'none';
+    if (volSlider) volSlider.disabled = false;
+  }
 
   const listEl = document.getElementById('bgm-list');
   if (!listEl) return;
@@ -1081,6 +1139,50 @@ const DEVICE_LABELS = { ios: '📱 iOS (猶予1300ms)', android: '🤖 Android (
 function getFrequency(noteName) {
   const instrument = document.getElementById('instrument-select').value;
   return baseFreqs[instrument] * Math.pow(2, semitoneOffsets[noteName] / 12);
+}
+
+// ==== ★ iOSサイレントスイッチ対策（無音ループでオーディオセッションを再生モードにする）====
+// iOSでは<audio>要素は消音モードでも鳴るが、Web Audio API（問題音・正解音・練習ピアノ）は
+// 消音モードだと無音になる。無音の<audio>をループ再生し続けると、オーディオセッションが
+// 「再生中」と見なされ、Web Audioも消音スイッチを無視して鳴るようになる。
+// ※iOS以外では不要なので何もしない（副作用を避ける）。
+const silentLoopAudio = document.getElementById('silent-loop-audio');
+let silentLoopStarted = false;
+
+// ごく短い無音WAV（44バイトヘッダ＋無音サンプル）をdata URIで生成する
+function makeSilentWavDataUri() {
+  const sampleRate = 8000, seconds = 0.5;
+  const numSamples = sampleRate * seconds;
+  const bytesPerSample = 2;
+  const dataSize = numSamples * bytesPerSample;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+  const writeStr = (off, s) => { for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)); };
+  writeStr(0, 'RIFF'); view.setUint32(4, 36 + dataSize, true); writeStr(8, 'WAVE');
+  writeStr(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true); view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * bytesPerSample, true); view.setUint16(32, bytesPerSample, true);
+  view.setUint16(34, 16, true); writeStr(36, 'data'); view.setUint32(40, dataSize, true);
+  // データ部は全て0（無音）のまま
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return 'data:audio/wav;base64,' + btoa(binary);
+}
+
+// ★ ユーザー操作（タップ）の中で呼ぶこと。iOSでのみ無音ループを開始する。
+function startSilentLoopForIOS() {
+  if (deviceType !== 'ios' || silentLoopStarted) return;
+  try {
+    if (!silentLoopAudio.getAttribute('src')) {
+      silentLoopAudio.setAttribute('src', makeSilentWavDataUri());
+    }
+    silentLoopAudio.volume = 0;   // 無音
+    silentLoopAudio.loop = true;
+    const p = silentLoopAudio.play();
+    if (p && p.then) p.then(() => { silentLoopStarted = true; }).catch(() => {});
+    else silentLoopStarted = true;
+  } catch (e) { /* 失敗しても致命的ではない（消音時に効果音が鳴らないだけ） */ }
 }
 
 function initAudio() {
