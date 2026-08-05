@@ -6,16 +6,16 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=M+PLUS+Rounded+1c:wght@700;900&display=swap" rel="stylesheet">
-<title>Transposing Ear Training - V54</title>
+<title>Transposing Ear Training - V58</title>
 
 <!-- ★ PWA対応：ホーム画面に追加するとブラウザUI無しの全画面アプリとして起動できる -->
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1abc9c">
-<!-- ★ ファビコン：外部ファイルを置かずに済むよう、SVGをdata URIで直接指定している
-     （未指定だとブラウザが favicon.ico を探しに行き、404がコンソールに出るため） -->
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%232c3e50'/%3E%3Ctext x='32' y='45' font-size='38' text-anchor='middle'%3E%F0%9F%8E%B7%3C/text%3E%3C/svg%3E">
-<!-- TODO: リリース時にアイコン(icon-192.png / icon-512.png)を用意して、下の行と manifest.json のicons欄を有効化してください -->
-<!-- <link rel="apple-touch-icon" href="icon-192.png"> -->
+<!-- ★ アイコン類（index.htmlと同じ階層に配置） -->
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
+<!-- iOSでホーム画面に追加した時のアイコン（180px推奨） -->
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Ear Trainer">
@@ -24,7 +24,7 @@
 <!-- ★ CSSファイルを外部から読み込む
      ?v= はキャッシュバスター。ブラウザ/PWAが古いファイルを配信し続ける問題の対策で、
      JS/CSSを更新したら必ずこの番号（とタイトルのV表記）を上げること。 -->
-<link rel="stylesheet" href="style.css?v=54">
+<link rel="stylesheet" href="style.css?v=58">
 </head>
 <body>
  
@@ -399,6 +399,6 @@
   </div>
 </div>
  
-<script src="script.js?v=54"></script>
+<script src="script.js?v=58"></script>
 </body>
 </html>

@@ -124,10 +124,10 @@ const BGM_LIBRARY = [
   },
   {
     id: 'bgm6',
-    file: 'Artistry In Rhythm (Production on theme).mp3',
-    title: 'Artistry In Rhythm (Production on theme)',
+    file: 'Malaguena.mp3',
+    title: 'Malaguena',
     artist: 'Stan Kenton And His Orchestra',
-    year: 1943,
+    year: 1961,
     unlock: { type: 'score', score: 1000000 },
     secret: true,               // ★ 隠し曲：条件も伏せ、ヒントのみ表示
     hint: '伝説の耳を持つ者だけが辿り着く'
