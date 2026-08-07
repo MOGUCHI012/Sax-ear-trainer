@@ -6,12 +6,15 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=M+PLUS+Rounded+1c:wght@700;900&display=swap" rel="stylesheet">
-<title>Transposing Ear Training - V58</title>
+<title>Transposing Ear Training - V62</title>
 
 <!-- ★ PWA対応：ホーム画面に追加するとブラウザUI無しの全画面アプリとして起動できる -->
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1abc9c">
-<!-- ★ アイコン類（index.htmlと同じ階層に配置） -->
+<!-- ★ アイコン類（index.htmlと同じ階層に配置）
+     favicon(16/32/48px)はタブ表示用に、元のバンド絵ではなく「音符」の専用デザインを使う。
+     細密なイラストは極小サイズだと潰れて判別できないため。 -->
+<link rel="icon" type="image/png" sizes="48x48" href="favicon-48.png">
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
 <link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
 <!-- iOSでホーム画面に追加した時のアイコン（180px推奨） -->
@@ -24,7 +27,7 @@
 <!-- ★ CSSファイルを外部から読み込む
      ?v= はキャッシュバスター。ブラウザ/PWAが古いファイルを配信し続ける問題の対策で、
      JS/CSSを更新したら必ずこの番号（とタイトルのV表記）を上げること。 -->
-<link rel="stylesheet" href="style.css?v=58">
+<link rel="stylesheet" href="style.css?v=62">
 </head>
 <body>
  
@@ -190,6 +193,8 @@
     <div id="game-screen" style="display:none; position:relative;">
       <!-- ★ 特訓終了ボタン：特訓中のみ表示。右上に絶対配置し、いつでも終了できる -->
       <button id="training-quit-btn" onpointerdown="event.preventDefault(); endTraining();">🏁 特訓終了</button>
+      <!-- ★ やり直しボタン：通常プレイ中のみ表示。特訓終了ボタンと同じ位置に出る -->
+      <button id="restart-btn" onpointerdown="event.preventDefault(); restartGame();">🔄 やり直す</button>
       <!-- ★ 問題の再再生ボタン：特訓中のみ表示。左上に絶対配置（時間無制限なので聞き直し自由） -->
       <button id="training-replay-btn" onpointerdown="event.preventDefault(); replayTrainingQuestion();">🔊 もう一度聞く</button>
       <div id="game-status-line"></div>
@@ -349,6 +354,7 @@
       ・ランキングは<strong>「総合」と「ステージ別（S1〜S4）」</strong>をタブで切り替えて見られます。<br>
       ・そのステージの自己ベストを更新すると、名前を入力して<strong>部内ランキング</strong>にスコアを送信できます。<br>
       ・「苦手な音」ランキングもステージごとに集計されます。STAGE 4のみ<strong>苦手な音程（跳躍）</strong>で集計。<br>
+      ・プレイ中は画面右上の<strong>🔄 やり直す</strong>でいつでも最初からやり直せます（途中のスコアは記録されません）。<br>
       ・<strong>🎯 苦手特訓モード</strong>：<strong>時間制限なし・最初から全音開放</strong>の練習モードです。苦手な音ほど出題確率が上がります。左上の<strong>🔊 もう一度聞く</strong>で問題を何度でも聞き直せます。右上の<strong>🏁 特訓終了</strong>でいつでも終了でき、終了後に今回ミスした音が表示されます。スコア・ランキング・履歴への記録はありません。<br>
       ・プレイ終了後のリザルトに<strong>今回ミスした音のワースト3</strong>が表示されます。次の狙いどころにどうぞ。<br>
       <div class="rule-section-title">💡 その他</div>
@@ -399,6 +405,6 @@
   </div>
 </div>
  
-<script src="script.js?v=58"></script>
+<script src="script.js?v=62"></script>
 </body>
 </html>
