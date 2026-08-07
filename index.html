@@ -6,7 +6,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=M+PLUS+Rounded+1c:wght@700;900&display=swap" rel="stylesheet">
-<title>Transposing Ear Training - V63</title>
+<title>Transposing Ear Training - V65</title>
 
 <!-- ★ PWA対応：ホーム画面に追加するとブラウザUI無しの全画面アプリとして起動できる -->
 <link rel="manifest" href="manifest.json">
@@ -27,7 +27,7 @@
 <!-- ★ CSSファイルを外部から読み込む
      ?v= はキャッシュバスター。ブラウザ/PWAが古いファイルを配信し続ける問題の対策で、
      JS/CSSを更新したら必ずこの番号（とタイトルのV表記）を上げること。 -->
-<link rel="stylesheet" href="style.css?v=63">
+<link rel="stylesheet" href="style.css?v=65">
 </head>
 <body>
  
@@ -99,6 +99,10 @@
     <div id="best-submit-section" style="display:none;">
       <h3 style="margin-top: 20px; font-size: 1.0em;">📤 自己ベストをランキング送信</h3>
       <input type="text" id="sidebar-player-name-input" class="score-name-input" placeholder="お名前 (10文字以内)" maxlength="10">
+      <label class="auto-submit-toggle">
+        <input type="checkbox" id="auto-submit-checkbox" onchange="handleAutoSubmitChange(this.checked)">
+        <span>自己ベスト更新時に自動で送信する</span>
+      </label>
       <div id="best-submit-list"></div>
       <div id="sidebar-submit-status" class="score-submit-status"></div>
     </div>
@@ -366,6 +370,20 @@
   </div>
 </div>
  
+<!-- ==== ★ 初回のランキング送信を促すモーダル（名前が未登録の人にだけ表示）==== -->
+<div id="first-submit-modal-overlay" class="modal-overlay" onpointerdown="if(event.target===this) closeFirstSubmitModal();">
+  <div class="modal-content">
+    <h3>🎉 自己ベスト更新！</h3>
+    <div id="first-submit-score" class="first-submit-score"></div>
+    <input type="text" id="first-submit-name-input" class="score-name-input" placeholder="ニックネーム (10文字以内)" maxlength="10">
+    <div id="first-submit-status" class="score-submit-status"></div>
+    <div class="first-submit-actions">
+      <button id="first-submit-send-btn" class="action-btn" onclick="submitFromFirstModal();">📤 送信する</button>
+      <button class="link-btn" onpointerdown="event.preventDefault(); closeFirstSubmitModal();">あとで</button>
+    </div>
+  </div>
+</div>
+
 <!-- ==== ★ BGM選択モーダル（ON/OFF＋解禁済み楽曲の選択）==== -->
 <div id="bgm-modal-overlay" class="modal-overlay" onpointerdown="if(event.target===this) closeBgmModal();">
   <div class="modal-content">
@@ -405,6 +423,6 @@
   </div>
 </div>
  
-<script src="script.js?v=63"></script>
+<script src="script.js?v=65"></script>
 </body>
 </html>

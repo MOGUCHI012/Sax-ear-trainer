@@ -1090,6 +1090,13 @@ let bestComboByStage = loadStageNumberMap('saxEarTrainBestComboByStage');
 // ★ Discordへ通知済みのスコア（ステージ別）。同じベストの再送信で通知が重複しないようにする
 let discordNotifiedByStage = loadStageNumberMap('saxEarTrainDiscordNotifiedByStage');
 
+// ★ 自己ベスト更新時の自動送信設定（デフォルトON）。
+//   名前が未登録のうちは自動送信できないため、その場合は従来通り手動の送信UIを出す。
+//   OFFにしたい人はサイドバーのチェックボックスで解除できる（オプトアウト方式）。
+let autoSubmitEnabled = (localStorage.getItem('saxEarTrainAutoSubmit') !== 'false');
+// ★ リザルト描画後に実行する自動送信の内容を一時的に保持する（描画をブロックしないため）
+let pendingAutoSubmit = null;
+
 // ==== ★ 外部送信（GAS/Discord）設定 ====
 // TODO: Discord Webhook URLを実際の値に置き換えてください
 const GAS_URL = "https://script.google.com/macros/s/AKfycbzgR5pfOXgsSkY9HfQ0bEjd33iDNEYZD-z07rOtSAXBCnm7u_rRqvFnqgib_niUr2_kEg/exec";
@@ -2491,13 +2498,24 @@ function endGame() {
   //       送信し損ねた場合は、スタート画面サイドバーの「📤 自己ベストをランキング送信」から
   //       いつでも送信できる（そちらが救済経路）。 ★★★
   if (isNewBest) {
-    endMsg += `<div style="color:#f1c40f; font-weight:bold; margin-top:6px;">🎉 STAGE${currentStage} 自己ベスト更新！ランキングに記録しよう</div>`;
-    endMsg += `
+    // ★ 自動送信の条件：設定がON かつ 名前が登録済み。
+    //   名前が未登録の人（初回）は自動送信できないため、従来通り手動の送信UIを出す。
+    //   送信そのものは実績のある sendScoreToRanking をそのまま使う。
+    const savedName = (localStorage.getItem('saxEarTrainPlayerName') || '').trim();
+    if (autoSubmitEnabled && savedName) {
+      endMsg += `<div style="color:#f1c40f; font-weight:bold; margin-top:6px;">🎉 STAGE${currentStage} 自己ベスト更新！</div>`;
+      endMsg += `<div id="auto-submit-status" class="score-submit-status" style="color:#bdc3c7;">📤 ランキングに送信中...</div>`;
+      // ★ 実際の送信はリザルト描画後に行う（描画をブロックしない／失敗しても表示に影響させない）
+      pendingAutoSubmit = { name: savedName, score: score, combo: finalCombo, stage: currentStage };
+    } else {
+      endMsg += `<div style="color:#f1c40f; font-weight:bold; margin-top:6px;">🎉 STAGE${currentStage} 自己ベスト更新！ランキングに記録しよう</div>`;
+      endMsg += `
       <div class="score-submit-box">
         <input type="text" id="player-name-input" class="score-name-input" placeholder="お名前を入力 (10文字以内)" maxlength="10">
         <button id="submit-score-btn" class="action-btn" onclick="submitScore(${score}, ${finalCombo}, ${currentStage})" style="width:100%; margin-top:8px;">📤 ランキングにスコアを送信</button>
         <div id="submit-status-msg" class="score-submit-status"></div>
       </div>`;
+    }
   }
 
   // ★ 今回のプレイの弱点サマリー
@@ -2517,6 +2535,23 @@ function endGame() {
   if (isNewBest) {
     const nameInput = document.getElementById('player-name-input');
     if (nameInput) nameInput.value = localStorage.getItem('saxEarTrainPlayerName') || '';
+  }
+
+  // ★ 自動送信の実行（リザルト描画が終わってから）。
+  //   送信処理は手動送信と同じ sendScoreToRanking を使い、結果はリザルト内の
+  //   #auto-submit-status に表示される。失敗してもサイドバーから手動で再送信できる。
+  if (pendingAutoSubmit) {
+    const p = pendingAutoSubmit;
+    pendingAutoSubmit = null;
+    sendScoreToRanking(p.name, p.score, p.combo, p.stage,
+                       document.getElementById('auto-submit-status'), null, true);
+  }
+
+  // ★ まだ一度も送信していない人（名前が未登録）が自己ベストを更新したら、
+  //   送信を促すモーダルを表示する。ここで送れば以降は自動送信に切り替わる。
+  //   リザルトの描画やガード処理が終わってから出す。
+  if (isNewBest && !(localStorage.getItem('saxEarTrainPlayerName') || '').trim()) {
+    setTimeout(() => showFirstSubmitModal(score, finalCombo, currentStage), 400);
   }
 }
 
@@ -2539,12 +2574,12 @@ function getOrCreateDeviceId() {
 }
 
 // ★ ランキング送信の共通処理。リザルト画面とサイドバー「自己ベスト送信」の両方から使う。
-function sendScoreToRanking(playerName, finalScore, finalCombo, stageNum, statusEl, submitBtn) {
+function sendScoreToRanking(playerName, finalScore, finalCombo, stageNum, statusEl, submitBtn, isAuto) {
   // ★ 次回以降のためにプレイヤー名を保存（キー名の誤字を修正: saxEarTrainerName → saxEarTrainPlayerName）
   localStorage.setItem('saxEarTrainPlayerName', playerName);
 
   if (submitBtn) submitBtn.disabled = true;
-  if (statusEl) statusEl.innerText = '送信中... (Sending...)';
+  if (statusEl) statusEl.innerText = isAuto ? '📤 ランキングに送信中...' : '送信中... (Sending...)';
 
   // ==== 1. GAS（スプレッドシート）へ送信 ====
   const deviceId = getOrCreateDeviceId();
@@ -2573,7 +2608,11 @@ function sendScoreToRanking(playerName, finalScore, finalCombo, stageNum, status
       throw new Error('サーバー側で送信が拒否されました: ' + (json && json.message ? json.message : '不明なエラー'));
     }
 
-    if (statusEl) statusEl.innerText = '✅ 送信完了！ランキングを更新しました';
+    if (statusEl) {
+      statusEl.innerText = isAuto
+        ? '✅ ランキングに自動送信しました（設定でOFFにできます）'
+        : '✅ 送信完了！ランキングを更新しました';
+    }
     // ★ 送信済みベストを記録し、サイドバーで「✅ 送信済み」と表示できるようにする
     submittedBestByStage[stageNum] = Math.max(submittedBestByStage[stageNum] || 0, finalScore);
     localStorage.setItem('saxEarTrainSubmittedBestByStage', JSON.stringify(submittedBestByStage));
@@ -2601,7 +2640,11 @@ function sendScoreToRanking(playerName, finalScore, finalCombo, stageNum, status
   })
   .catch(err => {
     console.error(err);
-    if (statusEl) statusEl.innerText = '⚠️ 送信に失敗しました。時間をおいて再試行してください。';
+    if (statusEl) {
+      statusEl.innerText = isAuto
+        ? '⚠️ 自動送信に失敗しました。左のサイドバーから送信できます。'
+        : '⚠️ 送信に失敗しました。時間をおいて再試行してください。';
+    }
   })
   .finally(() => {
     if (submitBtn) submitBtn.disabled = false;
@@ -2620,6 +2663,59 @@ function submitScore(finalScore, finalCombo, stageNum) {
     return;
   }
   sendScoreToRanking(playerName, finalScore, finalCombo, stageNum, statusEl, document.getElementById('submit-score-btn'));
+}
+
+// ★ 自動送信のON/OFF切り替え（サイドバーのチェックボックスから呼ばれる）
+function handleAutoSubmitChange(checked) {
+  autoSubmitEnabled = !!checked;
+  localStorage.setItem('saxEarTrainAutoSubmit', String(autoSubmitEnabled));
+}
+
+// ==== ★ 初回のランキング送信を促すモーダル ====
+// 名前が未登録の人（＝まだ一度も送信していない人）が自己ベストを更新した時に表示する。
+// ここで送信すると名前が保存されるので、以降は自動送信に切り替わりモーダルは出なくなる。
+let pendingFirstSubmit = null; // { score, combo, stage }
+
+function showFirstSubmitModal(score, combo, stage) {
+  pendingFirstSubmit = { score: score, combo: combo, stage: stage };
+  const scoreEl = document.getElementById('first-submit-score');
+  if (scoreEl) scoreEl.innerText = score.toLocaleString() + '点';
+  const nameInput = document.getElementById('first-submit-name-input');
+  if (nameInput) nameInput.value = '';
+  const statusEl = document.getElementById('first-submit-status');
+  if (statusEl) statusEl.innerText = '';
+  const sendBtn = document.getElementById('first-submit-send-btn');
+  if (sendBtn) sendBtn.disabled = false;
+  document.getElementById('first-submit-modal-overlay').classList.add('visible');
+}
+
+function closeFirstSubmitModal() {
+  document.getElementById('first-submit-modal-overlay').classList.remove('visible');
+  pendingFirstSubmit = null;
+}
+
+function submitFromFirstModal() {
+  if (!pendingFirstSubmit) return;
+  const statusEl = document.getElementById('first-submit-status');
+  const nameInput = document.getElementById('first-submit-name-input');
+  const playerName = nameInput ? nameInput.value.trim() : '';
+  if (!playerName) {
+    if (statusEl) statusEl.innerText = '⚠️ ニックネームを入力してください';
+    return;
+  }
+  const p = pendingFirstSubmit;
+  sendScoreToRanking(playerName, p.score, p.combo, p.stage,
+                     statusEl, document.getElementById('first-submit-send-btn'));
+  // ★ 送信結果はstatusElに表示される。成功時は sendScoreToRanking 側で
+  //   送信済み記録・サイドバーの更新が行われ、リザルトの手動UIも下で無効化される。
+  markResultSubmitUiAsDone();
+}
+
+// ★ モーダルから送信した場合、リザルト内に残っている手動送信UIを無効化して
+//   同じスコアを二重に送ってしまうのを防ぐ。
+function markResultSubmitUiAsDone() {
+  const box = document.querySelector('.score-submit-box');
+  if (box) box.innerHTML = '<div class="score-submit-status" style="color:#2ecc71;">✅ ランキングに送信しました</div>';
 }
 
 // ==== ★ サイドバー「📤 自己ベストをランキング送信」====
@@ -2655,6 +2751,10 @@ function renderBestSubmitSection() {
   if (nameInput && !nameInput.value) {
     nameInput.value = localStorage.getItem('saxEarTrainPlayerName') || '';
   }
+
+  // ★ 自動送信チェックボックスに現在の設定を反映する
+  const autoCb = document.getElementById('auto-submit-checkbox');
+  if (autoCb) autoCb.checked = autoSubmitEnabled;
 }
 
 function submitBestFromSidebar(stageNum) {
@@ -2870,6 +2970,7 @@ window.addEventListener('keydown', (e) => {
     if (document.getElementById('rules-modal-overlay').classList.contains('visible')) return;
     if (document.getElementById('keybind-modal-overlay').classList.contains('visible')) return;
     if (document.getElementById('bgm-modal-overlay').classList.contains('visible')) return;
+    if (document.getElementById('first-submit-modal-overlay').classList.contains('visible')) return;
     if (document.getElementById('tutorial-overlay').classList.contains('visible')) return;
 
     e.preventDefault();
@@ -2883,6 +2984,7 @@ window.addEventListener('keydown', (e) => {
     if (document.getElementById('rules-modal-overlay').classList.contains('visible')) return;
     if (document.getElementById('keybind-modal-overlay').classList.contains('visible')) return;
     if (document.getElementById('bgm-modal-overlay').classList.contains('visible')) return;
+    if (document.getElementById('first-submit-modal-overlay').classList.contains('visible')) return;
     if (document.getElementById('tutorial-overlay').classList.contains('visible')) return;
 
     e.preventDefault();

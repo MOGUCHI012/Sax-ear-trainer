@@ -193,6 +193,13 @@ button.action-btn { padding: 15px 30px; font-size: 1.2em; background-color: #e74
 
 /* ==== ★ サイドバーの「自己ベスト送信」セクション ==== */
 #best-submit-section .score-name-input { margin-bottom: 8px; font-size: 0.9em; padding: 8px; }
+/* ★ 自動送信のON/OFF（オプトアウト用） */
+.auto-submit-toggle {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 0.78em; color: #bdc3c7; margin-bottom: 10px;
+  cursor: pointer; user-select: none;
+}
+.auto-submit-toggle input { width: 15px; height: 15px; accent-color: #1abc9c; flex-shrink: 0; }
 .best-submit-row {
   display: flex; justify-content: space-between; align-items: center;
   background: rgba(255,255,255,0.06); padding: 6px 8px; border-radius: 5px; margin-bottom: 6px;
@@ -352,6 +359,15 @@ button.action-btn { padding: 15px 30px; font-size: 1.2em; background-color: #e74
   cursor: pointer; margin: 0 auto 16px auto; display: inline-block; touch-action: manipulation;
 }
 #bgm-toggle-btn.bgm-off { border-color: #7f8c8d; color: #7f8c8d; background: rgba(127,140,141,0.1); }
+
+/* ==== ★ 初回のランキング送信を促すモーダル ==== */
+.first-submit-score {
+  font-size: 1.4em; font-weight: bold; color: #f1c40f;
+  text-align: center; margin: 4px 0 14px;
+}
+.first-submit-actions { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+.first-submit-actions .action-btn { flex: 1; margin-bottom: 0; padding: 13px 10px; font-size: 1.05em; }
+.first-submit-actions .link-btn { margin-bottom: 0; flex-shrink: 0; }
 
 /* ==== ★ BGM選択モーダル ==== */
 #bgm-modal-toggle-btn {
