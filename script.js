@@ -1730,7 +1730,7 @@ function beginCountdownSequence() {
   document.getElementById('training-stats-bar').style.display = isTrainingMode ? 'flex' : 'none';
   document.getElementById('training-quit-btn').style.display = isTrainingMode ? 'block' : 'none';
   document.getElementById('training-replay-btn').style.display = isTrainingMode ? 'block' : 'none';
-  document.getElementById('restart-btn').style.display = isTrainingMode ? 'none' : 'block';
+  document.getElementById('quit-game-btn').style.display = isTrainingMode ? 'none' : 'block';
   
   combo = 0; maxCombo = 0; streak = 0; score = 0; timeLeft = 30; currentNoteCount = 4; recentQuestionNotes = [];
   stage3LowWindow = STAGE3_WINDOW_START; stage3HighWindow = STAGE3_WINDOW_START; // ★ STAGE3の2窓もリセット
@@ -2386,25 +2386,21 @@ function buildSessionWeaknessHTML() {
   return html;
 }
 
-// ★ プレイ中に最初からやり直す（通常プレイ専用）。
-//   途中のスコア・コンボは破棄され、リザルトも記録も残らない。
-//   （苦手統計は回答時点で加算済みのため、そこは巻き戻さない）
-function restartGame() {
+// ★ プレイ中に自分の意思でゲームを終了する（通常プレイ専用）。
+//   苦手特訓の「🏁 特訓終了」と同じ感覚で、その時点のリザルトを表示する。
+//   時間切れと同じ扱いなので、スコアは正式な記録（自己ベスト・ランキング）の対象。
+//   ※スコアは時間が続く限り増えるだけなので、途中終了が有利になることはない。
+function quitGame() {
   if (!isPlayingGame || isTrainingMode) return;
-  clearInterval(timerInterval);
-  isPlayingGame = false;
-  isWaitingForAnswer = false;
-  document.getElementById('restart-btn').style.display = 'none';
-  document.getElementById('game-message-area').innerHTML = '';
-  // ★ 各種状態のリセットはstartSequence→beginCountdownSequenceが行うので、そのまま再開する
-  startSequence();
+  if (isCountingDown) return; // カウントダウン中は不可（直後にゲームが始まってしまうため）
+  endGame();
 }
 
 function endGame() {
   clearInterval(timerInterval);
   isPlayingGame = false; 
   isWaitingForAnswer = false;
-  document.getElementById('restart-btn').style.display = 'none'; // ★ リザルト中は不要なので隠す
+  document.getElementById('quit-game-btn').style.display = 'none'; // ★ リザルト中は不要なので隠す
   // ★ ここではスクロール用の余白(no-scroll)を解除しない。
   //   解除すると下部の余白が急に消えて画面が跳ねるうえ、リザルトを読むための
   //   スクロールもしづらくなるため。スタート画面に戻る時にまとめて解除する。

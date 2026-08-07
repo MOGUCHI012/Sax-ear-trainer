@@ -160,14 +160,14 @@ button.action-btn { padding: 15px 30px; font-size: 1.2em; background-color: #e74
   cursor: pointer; touch-action: manipulation;
 }
 #training-quit-btn:active { background: rgba(231,76,60,0.35); }
-/* やり直しボタン：通常プレイ中のみ表示。特訓終了ボタンと同じ右上の位置 */
-#restart-btn {
+/* ゲーム終了ボタン：通常プレイ中のみ表示。特訓終了ボタンと同じ役割・配色に揃える */
+#quit-game-btn {
   display: none; position: absolute; top: 0; right: 0; z-index: 60;
-  background: rgba(243,156,18,0.15); border: 1px solid #f39c12; color: #f39c12;
+  background: rgba(231,76,60,0.15); border: 1px solid #e74c3c; color: #e74c3c;
   padding: 6px 12px; border-radius: 16px; font-size: 0.8em; font-weight: bold;
   cursor: pointer; touch-action: manipulation;
 }
-#restart-btn:active { background: rgba(243,156,18,0.35); }
+#quit-game-btn:active { background: rgba(231,76,60,0.35); }
 /* 問題の再再生ボタン：終了ボタンと対になる左上配置。押す頻度が高いため少し目立つ緑系にする */
 #training-replay-btn {
   display: none; position: absolute; top: 0; left: 0; z-index: 60;
@@ -495,7 +495,7 @@ button.action-btn { padding: 15px 30px; font-size: 1.2em; background-color: #e74
   /* ★ 横画面では特訓終了ボタンを小さくし、ステータス行との重なりを抑える */
   #training-quit-btn { padding: 4px 10px; font-size: 0.72em; }
   #training-replay-btn { padding: 4px 10px; font-size: 0.72em; }
-  #restart-btn { padding: 4px 10px; font-size: 0.72em; }
+  #quit-game-btn { padding: 4px 10px; font-size: 0.72em; }
   /* ★ 開放音数/判定端末バッジを非表示にした分、鍵盤を大きく表示する */
   .key { height: 128px; padding-bottom: 6px; font-size: 0.8em; }
   .key.black-key { height: 80px; width: 92%; max-width: 56px; }
