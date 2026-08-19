@@ -629,6 +629,197 @@ window.addEventListener('focus', () => {
   resumeBgmFromBackground();
 });
 
+// ==== ★ 歌唱モード（オマケ機能）====
+// 音を聴かずに、表示された音名（または度数）を声で歌い、正解を聴いて自己判定する練習。
+// スコア・ランキング・プレイ履歴・自己ベストとは一切無関係。
+// 統計も既存の聴音統計(noteStatsByStage)には混ぜない（自己申告なので信頼性が異なるため）。
+// 本編の鍵盤をそのまま流用するが、出題中は押せないようにする（先に答えを聴けてしまうため）。
+let isSingingMode = false;
+let singingRefNote = 'C';       // 現在の基準音
+let singingTargetNote = 'C';    // 歌う対象の音
+let singingRevealed = false;    // 正解を聴いたか（＝鍵盤を解禁してよいか）
+let singingCount = 0, singingCorrect = 0;
+let singingStats = {};          // 歌唱モード専用の統計。既存の苦手ランキングには出さない
+
+function openSingingMode() {
+  isSingingMode = true;
+  singingCount = 0; singingCorrect = 0; singingStats = {};
+  document.getElementById('start-screen').style.display = 'none';
+  document.getElementById('game-screen').style.display = 'block';
+  document.body.classList.add('hide-sidebars');
+  stopBGM(true);
+  lockBodyScroll();
+
+  // 保存された設定を復元
+  const refSel = document.getElementById('singing-ref-select');
+  const labelSel = document.getElementById('singing-label-select');
+  const savedRef = localStorage.getItem('saxEarTrainSingingRef');
+  const savedLabel = localStorage.getItem('saxEarTrainSingingLabel');
+  if (savedRef === 'fixed' || savedRef === 'random') refSel.value = savedRef;
+  if (savedLabel === 'note' || savedLabel === 'degree') labelSel.value = savedLabel;
+
+  // 本編用のUIを隠し、歌唱モード用のUIを出す
+  document.getElementById('game-stats-bar').style.display = 'none';
+  document.getElementById('game-sub-stats-bar').style.display = 'none';
+  document.getElementById('training-stats-bar').style.display = 'none';
+  document.getElementById('game-message-area').style.display = 'none';
+  document.getElementById('start-btn').style.display = 'none';
+  document.getElementById('training-quit-btn').style.display = 'none';
+  document.getElementById('training-replay-btn').style.display = 'none';
+  document.getElementById('quit-game-btn').style.display = 'none';
+  document.getElementById('countdown').style.display = 'none';
+  document.getElementById('singing-panel').style.display = 'block';
+  document.getElementById('singing-stats-bar').style.display = 'flex';
+  document.getElementById('singing-settings').style.display = 'flex';
+  document.getElementById('singing-quit-btn').style.display = 'block';
+
+  updateGameStatusLine();
+  updateSingingStats();
+  ensureAudioRunning(() => nextSingingQuestion());
+}
+
+function endSinging() {
+  isSingingMode = false;
+  document.getElementById('singing-panel').style.display = 'none';
+  document.getElementById('singing-stats-bar').style.display = 'none';
+  document.getElementById('singing-settings').style.display = 'none';
+  document.getElementById('singing-quit-btn').style.display = 'none';
+  document.getElementById('game-message-area').style.display = '';
+
+  const acc = singingCount > 0 ? Math.round((singingCorrect / singingCount) * 100) : 0;
+  let msg = `<div class="result-score-line">🎤 歌唱おつかれさま！</div>`;
+  msg += `<div class="rank-display" style="color:#1abc9c; font-size:1em;">出題 ${singingCount}問 ・ 正解 ${singingCorrect} ・ 正答率 ${acc}%</div>`;
+  msg += buildSingingWeaknessHTML();
+  msg += `<div class="result-actions">`;
+  msg += `<button class="action-btn result-guard-btn" disabled onclick="openSingingMode()">もう一度歌う</button>`;
+  msg += `<button class="link-btn result-guard-btn" disabled onclick="returnToStartScreen();">🔁 ステージ選択</button>`;
+  msg += `</div>`;
+  document.getElementById('game-message-area').innerHTML = msg;
+
+  document.querySelectorAll('.key').forEach(el => el.classList.remove('singing-locked'));
+  updateDifficulty(); // 鍵盤をフリープレイ状態に戻す
+  resultGuardUntil = Date.now() + RESULT_TAP_GUARD_MS;
+  setTimeout(() => {
+    document.querySelectorAll('.result-guard-btn').forEach(b => { b.disabled = false; });
+  }, RESULT_TAP_GUARD_MS);
+}
+
+// ★ 今回外した音のまとめ（その場限りの表示。永続化はしない）
+function buildSingingWeaknessHTML() {
+  if (singingCount === 0) return '';
+  const entries = Object.keys(singingStats)
+    .map(k => ({ key: k, miss: singingStats[k].attempts - singingStats[k].correct }))
+    .filter(e => e.miss > 0)
+    .sort((a, b) => b.miss - a.miss)
+    .slice(0, 3);
+  if (entries.length === 0) {
+    return `<div class="session-weak-box session-weak-perfect">🎉 全問クリア！</div>`;
+  }
+  let html = `<div class="session-weak-box"><div class="session-weak-title">🎤 外した音</div>`;
+  entries.forEach(e => {
+    html += `<div class="weak-note-item"><span>${escapeHtml(e.key)}</span><span>${e.miss}回</span></div>`;
+  });
+  html += `</div>`;
+  return html;
+}
+
+function handleSingingSettingChange() {
+  localStorage.setItem('saxEarTrainSingingRef', document.getElementById('singing-ref-select').value);
+  localStorage.setItem('saxEarTrainSingingLabel', document.getElementById('singing-label-select').value);
+  nextSingingQuestion();
+}
+
+// ★ 出題：基準音を鳴らし、歌う対象（音名または度数）を表示する
+function nextSingingQuestion() {
+  if (!isSingingMode) return;
+  singingRevealed = false;
+
+  const refMode = document.getElementById('singing-ref-select').value;
+  singingRefNote = (refMode === 'random')
+    ? stage4ReferencePool[Math.floor(Math.random() * stage4ReferencePool.length)]
+    : 'C';
+
+  // 対象音は基準音から1〜11半音上（同音は出題しない）
+  const semis = 1 + Math.floor(Math.random() * 11);
+  const targetPc = ((semitoneOffsets[singingRefNote] + semis) % 12 + 12) % 12;
+  // 1オクターブ内（C〜B）の実在キーへ変換する
+  const found = allNoteKeys.find(k =>
+    semitoneOffsets[k] >= 0 && semitoneOffsets[k] <= 11 &&
+    ((semitoneOffsets[k] % 12) + 12) % 12 === targetPc);
+  singingTargetNote = found || 'C';
+
+  document.getElementById('singing-ref-name').innerText = noteNames[singingRefNote] || singingRefNote;
+  const labelMode = document.getElementById('singing-label-select').value;
+  const diff = ((semitoneOffsets[singingTargetNote] - semitoneOffsets[singingRefNote]) % 12 + 12) % 12;
+  document.getElementById('singing-target-label').innerText =
+    (labelMode === 'degree') ? intervalNames[diff] : (noteNames[singingTargetNote] || singingTargetNote);
+
+  document.getElementById('singing-message-area').innerHTML = '🎤 この音を歌ってみましょう';
+  document.getElementById('singing-action-area').style.display = 'flex';
+  document.getElementById('singing-judge-area').style.display = 'none';
+
+  updateSingingKeyboardLock();
+  playSingingReference();
+}
+
+function playSingingReference() {
+  if (!isSingingMode) return;
+  resumeAudioIfNeeded();
+  playSaxTone(getFrequency(singingRefNote), 0.6);
+}
+
+// ★ 正解を聴く（ここで初めて対象音が鳴り、鍵盤も解禁される）
+function revealSingingAnswer() {
+  if (!isSingingMode || singingRevealed) return;
+  singingRevealed = true;
+  resumeAudioIfNeeded();
+  const t0 = audioCtx.currentTime;
+  playSaxTone(getFrequency(singingRefNote), 0.4, t0);
+  playSaxTone(getFrequency(singingTargetNote), 0.8, t0 + 0.5);
+
+  const labelMode = document.getElementById('singing-label-select').value;
+  const diff = ((semitoneOffsets[singingTargetNote] - semitoneOffsets[singingRefNote]) % 12 + 12) % 12;
+  const answerText = (labelMode === 'degree')
+    ? `${intervalNames[diff]}（${getFullNoteName(singingTargetNote)}）`
+    : getFullNoteName(singingTargetNote);
+  document.getElementById('singing-message-area').innerHTML = `<div>正解: <strong>${answerText}</strong></div>`;
+  document.getElementById('singing-action-area').style.display = 'none';
+  document.getElementById('singing-judge-area').style.display = 'flex';
+
+  updateSingingKeyboardLock(); // 鍵盤を解禁
+}
+
+// ★ 自己判定
+function judgeSinging(isCorrect) {
+  if (!isSingingMode || !singingRevealed) return;
+  singingCount++;
+  if (isCorrect) singingCorrect++;
+
+  const labelMode = document.getElementById('singing-label-select').value;
+  const diff = ((semitoneOffsets[singingTargetNote] - semitoneOffsets[singingRefNote]) % 12 + 12) % 12;
+  const key = (labelMode === 'degree') ? intervalNames[diff] : (noteNames[singingTargetNote] || singingTargetNote);
+  if (!singingStats[key]) singingStats[key] = { attempts: 0, correct: 0 };
+  singingStats[key].attempts++;
+  if (isCorrect) singingStats[key].correct++;
+
+  updateSingingStats();
+  setTimeout(nextSingingQuestion, 400);
+}
+
+function updateSingingStats() {
+  document.getElementById('singing-count').innerText = singingCount;
+  document.getElementById('singing-correct').innerText = singingCorrect;
+  document.getElementById('singing-accuracy').innerText =
+    singingCount > 0 ? Math.round((singingCorrect / singingCount) * 100) + '%' : '-';
+}
+
+// ★ 出題中は鍵盤を押せないようにする（先に正解を聴けてしまうのを防ぐ）
+function updateSingingKeyboardLock() {
+  document.querySelectorAll('.key').forEach(el => {
+    el.classList.toggle('singing-locked', !singingRevealed);
+  });
+}
+
 // ==== ★ 苦手特訓モード（時間無制限・全音開放の反復練習モード）====
 // 旧「focusWeakMode」トグル（通常プレイの出題だけ変える方式）は廃止し、独立モードに昇格した。
 //   ・時間制限なし（タイマー・3分フェイルセーフとも動かさない）
@@ -1544,6 +1735,13 @@ function beginGame() {
 
 function returnToStartScreen() {
   isTrainingMode = false; // ★ 特訓リザルトから戻った場合もここでモードを解除する
+  isSingingMode = false;  // ★ 歌唱モードも解除
+  document.querySelectorAll('.key').forEach(el => el.classList.remove('singing-locked'));
+  document.getElementById('singing-panel').style.display = 'none';
+  document.getElementById('singing-stats-bar').style.display = 'none';
+  document.getElementById('singing-settings').style.display = 'none';
+  document.getElementById('singing-quit-btn').style.display = 'none';
+  document.getElementById('game-message-area').style.display = '';
   document.getElementById('game-screen').style.display = 'none';
   document.getElementById('start-screen').style.display = 'block';
   document.getElementById('start-btn').style.display = '';
@@ -1922,6 +2120,14 @@ function nextQuestion() {
 }
 
 function checkAnswer(answerNote) {
+  // ★ 歌唱モード中は本編の判定を行わない。
+  //   出題中（正解を聴く前）は鍵盤を無効化し、正解を聴いた後だけ自由に鳴らせる。
+  if (isSingingMode) {
+    if (!singingRevealed) return;
+    playFreePlayTone(answerNote);
+    return;
+  }
+
   if (!isPlayingGame) {
     if (isCountingDown) return;
     if (!freePlayNotes.includes(answerNote)) return;

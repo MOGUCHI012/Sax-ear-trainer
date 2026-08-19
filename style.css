@@ -360,6 +360,38 @@ button.action-btn { padding: 15px 30px; font-size: 1.2em; background-color: #e74
 }
 #bgm-toggle-btn.bgm-off { border-color: #7f8c8d; color: #7f8c8d; background: rgba(127,140,141,0.1); }
 
+/* ==== ★ 歌唱モード ==== */
+#singing-quit-btn {
+  display: none; position: absolute; top: 0; right: 0; z-index: 60;
+  background: rgba(231,76,60,0.15); border: 1px solid #e74c3c; color: #e74c3c;
+  padding: 6px 12px; border-radius: 16px; font-size: 0.8em; font-weight: bold;
+  cursor: pointer; touch-action: manipulation;
+}
+#singing-quit-btn:active { background: rgba(231,76,60,0.35); }
+#singing-panel { text-align: center; margin-bottom: 10px; }
+#singing-ref-line { font-size: 0.9em; color: #bdc3c7; margin-bottom: 8px; }
+#singing-ref-line strong { color: #f1c40f; font-size: 1.15em; }
+#singing-ref-line .link-btn { margin: 0 0 0 8px; padding: 4px 10px; font-size: 0.8em; }
+#singing-target-box {
+  background: rgba(26,188,156,0.12); border: 2px solid #1abc9c; border-radius: 12px;
+  padding: 14px 10px; margin: 0 auto 10px; max-width: 320px;
+}
+#singing-target-label {
+  font-family: 'M PLUS Rounded 1c', sans-serif; font-weight: 800;
+  font-size: 2.4em; color: #1abc9c; line-height: 1.2;
+}
+#singing-message-area { min-height: 24px; font-size: 0.95em; margin-bottom: 10px; }
+#singing-action-area, #singing-judge-area {
+  display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;
+}
+#singing-action-area .action-btn, #singing-judge-area .action-btn {
+  margin-bottom: 0; padding: 12px 22px; font-size: 1em;
+}
+#singing-judge-area .action-btn { background-color: #27ae60; box-shadow: 0 4px #1e8449; }
+#singing-judge-area .action-btn.singing-ng { background-color: #e74c3c; box-shadow: 0 4px #c0392b; }
+/* 出題中（正解を聴く前）は鍵盤を押せないようにする */
+.key.singing-locked { pointer-events: none; opacity: 0.45; filter: grayscale(0.5); }
+
 /* ==== ★ 初回のランキング送信を促すモーダル ==== */
 .first-submit-score {
   font-size: 1.4em; font-weight: bold; color: #f1c40f;
