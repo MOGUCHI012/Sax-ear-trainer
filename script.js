@@ -698,7 +698,9 @@ function openSingingMode() {
         clearInterval(timer);
         cdEl.style.display = 'none';
         document.getElementById('singing-panel').style.display = 'block';
-        nextSingingQuestion();
+        // ★ カウントダウンの終了音（3.0秒〜3.25秒の「ピー」）と基準音が重ならないよう、
+        //   本編（startGameLoop）と同じく1200ms待ってから最初の問題を始める。
+        setTimeout(nextSingingQuestion, 1200);
       }
     }, 1000);
   });
