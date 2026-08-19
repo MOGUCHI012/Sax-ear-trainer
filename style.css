@@ -391,6 +391,8 @@ button.action-btn { padding: 15px 30px; font-size: 1.2em; background-color: #e74
 #singing-judge-area .action-btn.singing-ng { background-color: #e74c3c; box-shadow: 0 4px #c0392b; }
 /* 出題中（正解を聴く前）は鍵盤を押せないようにする */
 .key.singing-locked { pointer-events: none; opacity: 0.45; filter: grayscale(0.5); }
+/* ★ ただし基準音のハイライトはロック中でもはっきり見えるようにする */
+.key.singing-locked.reference-highlight { opacity: 1; filter: none; }
 
 /* ==== ★ 初回のランキング送信を促すモーダル ==== */
 .first-submit-score {

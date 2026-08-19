@@ -6,7 +6,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=M+PLUS+Rounded+1c:wght@700;900&display=swap" rel="stylesheet">
-<title>Transposing Ear Training - V66</title>
+<title>Transposing Ear Training - V67</title>
 
 <!-- ★ PWA対応：ホーム画面に追加するとブラウザUI無しの全画面アプリとして起動できる -->
 <link rel="manifest" href="manifest.json">
@@ -27,7 +27,7 @@
 <!-- ★ CSSファイルを外部から読み込む
      ?v= はキャッシュバスター。ブラウザ/PWAが古いファイルを配信し続ける問題の対策で、
      JS/CSSを更新したら必ずこの番号（とタイトルのV表記）を上げること。 -->
-<link rel="stylesheet" href="style.css?v=66">
+<link rel="stylesheet" href="style.css?v=67">
 </head>
 <body>
  
@@ -134,7 +134,7 @@
       <button class="link-btn" onpointerdown="event.preventDefault(); showRulesModal();">📖 詳しいルールを見る (How to play)</button>
       <button class="link-btn" onclick="showKeybindModal();">⌨️ キー割り当てをカスタマイズ</button>
       <button class="link-btn" onclick="openPracticePiano();">🎹 練習用ピアノ</button>
-      <button class="link-btn" onclick="openSingingMode();">🎤 歌唱モード</button>
+      <button class="link-btn" onclick="openSingingMode();">🎤 音声モード</button>
       <br>
       <button id="bgm-toggle-btn" onclick="showBgmModal();">🎵 BGM</button>
  
@@ -200,7 +200,7 @@
       <button id="training-quit-btn" onpointerdown="event.preventDefault(); endTraining();">🏁 特訓終了</button>
       <!-- ★ ゲーム終了ボタン：通常プレイ中のみ表示。特訓終了ボタンと同じ位置・同じ役割 -->
       <button id="quit-game-btn" onpointerdown="event.preventDefault(); quitGame();">🏁 ゲーム終了</button>
-      <!-- ★ 歌唱モードの終了ボタン -->
+      <!-- ★ 音声モードの終了ボタン -->
       <button id="singing-quit-btn" onpointerdown="event.preventDefault(); endSinging();">🏁 終了</button>
       <!-- ★ 問題の再再生ボタン：特訓中のみ表示。左上に絶対配置（時間無制限なので聞き直し自由） -->
       <button id="training-replay-btn" onpointerdown="event.preventDefault(); replayTrainingQuestion();">🔊 もう一度聞く</button>
@@ -216,7 +216,7 @@
         <div>🎯 正答率: <span id="training-accuracy">-</span></div>
         <div>⚡ 平均反応: <span id="training-avgtime">-</span></div>
       </div>
-      <!-- ★ 歌唱モード用の統計バーと設定 -->
+      <!-- ★ 音声モード用の統計バーと設定 -->
       <div class="stats-bar" id="singing-stats-bar" style="display:none;">
         <div>📊 出題: <span id="singing-count">0</span></div>
         <div>⭕ 正解: <span id="singing-correct">0</span></div>
@@ -245,7 +245,7 @@
       <!-- ★ flexレイアウト指定はstyle.cssに移動（メディアクエリでjustify-contentを上書きできるようにするため） -->
       <div id="game-message-area">楽器とモードを選んでスタート！</div>
 
-      <!-- ==== ★ 歌唱モード用パネル（歌唱モード中のみ表示。鍵盤は本編のものを流用する）==== -->
+      <!-- ==== ★ 音声モード用パネル（音声モード中のみ表示。鍵盤は本編のものを流用する）==== -->
       <div id="singing-panel" style="display:none;">
         <div id="singing-ref-line">🎵 基準音: <strong id="singing-ref-name">ド</strong>
           <button id="singing-replay-ref-btn" class="link-btn" onclick="playSingingReference();">🔊 もう一度</button>
@@ -394,7 +394,7 @@
       ・そのステージの自己ベストを更新すると、名前を入力して<strong>部内ランキング</strong>にスコアを送信できます。<br>
       ・「苦手な音」ランキングもステージごとに集計されます。STAGE 4のみ<strong>苦手な音程（跳躍）</strong>で集計。<br>
       ・プレイ中は画面右上の<strong>🏁 ゲーム終了</strong>で、いつでもその時点で終了して結果を見られます（スコアは記録されます）。<br>
-      ・<strong>🎤 歌唱モード</strong>：表示された音を<strong>声で歌う</strong>練習です（音は鳴りません）。歌ってから「正解を聴く」で答え合わせし、自分で○×を判定します。基準音を固定／ランダム、表記を音名／度数（長3度など）から選べます。スコア・ランキング・履歴への記録はありません。<br>
+      ・<strong>🎤 音声モード</strong>：表示された音を<strong>声で歌う</strong>練習です（問題の音は鳴りません）。歌ってから「正解を聴く」で答え合わせし、自分で○×を判定します。基準音を固定／ランダム、表記を音名／度数（長3度など）から選べます。開始時にカウントダウンがあり、基準音は鍵盤が光って分かります。スコア・ランキング・履歴への記録はありません。<br>
       ・<strong>🎯 苦手特訓モード</strong>：<strong>時間制限なし・最初から全音開放</strong>の練習モードです。苦手な音ほど出題確率が上がります。左上の<strong>🔊 もう一度聞く</strong>で問題を何度でも聞き直せます。右上の<strong>🏁 特訓終了</strong>でいつでも終了でき、終了後に今回ミスした音が表示されます。スコア・ランキング・履歴への記録はありません。<br>
       ・プレイ終了後のリザルトに<strong>今回ミスした音のワースト3</strong>が表示されます。次の狙いどころにどうぞ。<br>
       <div class="rule-section-title">💡 その他</div>
@@ -459,6 +459,6 @@
   </div>
 </div>
  
-<script src="script.js?v=66"></script>
+<script src="script.js?v=67"></script>
 </body>
 </html>
