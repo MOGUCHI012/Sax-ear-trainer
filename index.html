@@ -6,7 +6,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=M+PLUS+Rounded+1c:wght@700;900&display=swap" rel="stylesheet">
-<title>Transposing Ear Training - V67</title>
+<title>Transposing Ear Training - V68</title>
 
 <!-- ★ PWA対応：ホーム画面に追加するとブラウザUI無しの全画面アプリとして起動できる -->
 <link rel="manifest" href="manifest.json">
@@ -27,7 +27,7 @@
 <!-- ★ CSSファイルを外部から読み込む
      ?v= はキャッシュバスター。ブラウザ/PWAが古いファイルを配信し続ける問題の対策で、
      JS/CSSを更新したら必ずこの番号（とタイトルのV表記）を上げること。 -->
-<link rel="stylesheet" href="style.css?v=67">
+<link rel="stylesheet" href="style.css?v=68">
 </head>
 <body>
  
@@ -231,6 +231,10 @@
           <option value="note" selected>表記: 音名</option>
           <option value="degree">表記: 度数</option>
         </select>
+        <select id="singing-scale-select" class="game-setting" onchange="handleSingingSettingChange()">
+          <option value="diatonic" selected>出題: ドレミファソラシ</option>
+          <option value="chromatic">出題: 半音を含む全音</option>
+        </select>
       </div>
       <div class="sub-stats-bar" id="game-sub-stats-bar">
         <div>🎯 連続正解: <span id="streak">0</span> 回</div>
@@ -394,7 +398,7 @@
       ・そのステージの自己ベストを更新すると、名前を入力して<strong>部内ランキング</strong>にスコアを送信できます。<br>
       ・「苦手な音」ランキングもステージごとに集計されます。STAGE 4のみ<strong>苦手な音程（跳躍）</strong>で集計。<br>
       ・プレイ中は画面右上の<strong>🏁 ゲーム終了</strong>で、いつでもその時点で終了して結果を見られます（スコアは記録されます）。<br>
-      ・<strong>🎤 音声モード</strong>：表示された音を<strong>声で歌う</strong>練習です（問題の音は鳴りません）。歌ってから「正解を聴く」で答え合わせし、自分で○×を判定します。基準音を固定／ランダム、表記を音名／度数（長3度など）から選べます。開始時にカウントダウンがあり、基準音は鍵盤が光って分かります。スコア・ランキング・履歴への記録はありません。<br>
+      ・<strong>🎤 音声モード</strong>：表示された音を<strong>声で歌う</strong>練習です（問題の音は鳴りません）。歌ってから「正解を聴く」で答え合わせし、自分で○×を判定します。基準音を固定／ランダム、表記を音名／度数（長3度など）、出題範囲を<strong>ドレミファソラシ／半音を含む全音</strong>から選べます。開始時にカウントダウンがあり、基準音は鍵盤が黄色く光ります。正解を聴くと<strong>正解の鍵盤が緑に光る</strong>ので、外した音をすぐ確認できます。スコア・ランキング・履歴への記録はありません。<br>
       ・<strong>🎯 苦手特訓モード</strong>：<strong>時間制限なし・最初から全音開放</strong>の練習モードです。苦手な音ほど出題確率が上がります。左上の<strong>🔊 もう一度聞く</strong>で問題を何度でも聞き直せます。右上の<strong>🏁 特訓終了</strong>でいつでも終了でき、終了後に今回ミスした音が表示されます。スコア・ランキング・履歴への記録はありません。<br>
       ・プレイ終了後のリザルトに<strong>今回ミスした音のワースト3</strong>が表示されます。次の狙いどころにどうぞ。<br>
       <div class="rule-section-title">💡 その他</div>
@@ -459,6 +463,6 @@
   </div>
 </div>
  
-<script src="script.js?v=67"></script>
+<script src="script.js?v=68"></script>
 </body>
 </html>

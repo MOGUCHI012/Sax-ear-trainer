@@ -655,8 +655,12 @@ function openSingingMode() {
   const labelSel = document.getElementById('singing-label-select');
   const savedRef = localStorage.getItem('saxEarTrainSingingRef');
   const savedLabel = localStorage.getItem('saxEarTrainSingingLabel');
+  const savedScale = localStorage.getItem('saxEarTrainSingingScale');
   if (savedRef === 'fixed' || savedRef === 'random') refSel.value = savedRef;
   if (savedLabel === 'note' || savedLabel === 'degree') labelSel.value = savedLabel;
+  if (savedScale === 'diatonic' || savedScale === 'chromatic') {
+    document.getElementById('singing-scale-select').value = savedScale;
+  }
 
   // 本編用のUIを隠し、音声モード用のUIを出す
   document.getElementById('game-stats-bar').style.display = 'none';
@@ -719,7 +723,7 @@ function endSinging() {
   msg += `</div>`;
   document.getElementById('game-message-area').innerHTML = msg;
 
-  document.querySelectorAll('.key').forEach(el => el.classList.remove('singing-locked'));
+  document.querySelectorAll('.key').forEach(el => { el.classList.remove('singing-locked'); el.classList.remove('singing-answer'); });
   updateDifficulty(); // 鍵盤をフリープレイ状態に戻す
   resultGuardUntil = Date.now() + RESULT_TAP_GUARD_MS;
   setTimeout(() => {
@@ -749,6 +753,7 @@ function buildSingingWeaknessHTML() {
 function handleSingingSettingChange() {
   localStorage.setItem('saxEarTrainSingingRef', document.getElementById('singing-ref-select').value);
   localStorage.setItem('saxEarTrainSingingLabel', document.getElementById('singing-label-select').value);
+  localStorage.setItem('saxEarTrainSingingScale', document.getElementById('singing-scale-select').value);
   nextSingingQuestion();
 }
 
@@ -756,14 +761,24 @@ function handleSingingSettingChange() {
 function nextSingingQuestion() {
   if (!isSingingMode) return;
   singingRevealed = false;
+  // ★ 前の問題の正解ハイライトを消す
+  document.querySelectorAll('.key.singing-answer').forEach(el => el.classList.remove('singing-answer'));
+  updateSingingKeyboard(); // 音域設定に応じた鍵盤表示にする（黒鍵の表示/非表示）
 
   const refMode = document.getElementById('singing-ref-select').value;
   singingRefNote = (refMode === 'random')
     ? stage4ReferencePool[Math.floor(Math.random() * stage4ReferencePool.length)]
     : 'C';
 
-  // 対象音は基準音から1〜11半音上（同音は出題しない）
-  const semis = 1 + Math.floor(Math.random() * 11);
+  // ★ 対象音は基準音からの音程で決める（同音は出題しない）。
+  //   「ドレミファソラシ」を選んだ場合は、基準音から見て長音階上にある音程のみ出題する。
+  //   （半音を含む音程が苦手な人でも取り組めるように）
+  const DIATONIC_INTERVALS = [2, 4, 5, 7, 9, 11]; // 長2度・長3度・完全4度・完全5度・長6度・長7度
+  const scaleMode = document.getElementById('singing-scale-select').value;
+  const candidates = (scaleMode === 'chromatic')
+    ? [1,2,3,4,5,6,7,8,9,10,11]
+    : DIATONIC_INTERVALS;
+  const semis = candidates[Math.floor(Math.random() * candidates.length)];
   const targetPc = ((semitoneOffsets[singingRefNote] + semis) % 12 + 12) % 12;
   // 1オクターブ内（C〜B）の実在キーへ変換する
   const found = allNoteKeys.find(k =>
@@ -783,6 +798,32 @@ function nextSingingQuestion() {
 
   updateSingingKeyboardLock();
   playSingingReference();
+}
+
+// ★ 音声モード中の鍵盤表示を整える。
+//   本編のupdateDifficultyはステージ設定に依存するため、音声モードでは専用に制御する。
+//   「半音を含む全音」を選んだときは黒鍵も表示しないと、正解の鍵盤が見えなくなってしまう。
+function updateSingingKeyboard() {
+  const scaleMode = document.getElementById('singing-scale-select').value;
+  const includeChromatic = (scaleMode === 'chromatic');
+  const mode = document.getElementById('keyboard-mode-select').value;
+  const whiteKeyGroup = (mode === 'pc') ? diatonicSequencePC : diatonicSequenceMobile;
+
+  document.querySelectorAll('.key-group').forEach(group => {
+    group.classList.toggle('group-visible', whiteKeyGroup.includes(group.dataset.whiteNote));
+  });
+
+  freePlayNotes = [];
+  document.querySelectorAll('.key').forEach(el => {
+    const noteId = el.id.replace('note-', '');
+    const isBlack = el.classList.contains('black-key');
+    const anchorWhiteNote = isBlack ? flatToWhiteAnchor[noteId] : noteId;
+    const groupVisible = whiteKeyGroup.includes(anchorWhiteNote);
+    const shouldShow = isBlack ? (groupVisible && includeChromatic) : groupVisible;
+    if (shouldShow) freePlayNotes.push(noteId);
+    el.classList.toggle('visible-key', shouldShow);
+    el.classList.toggle('active-key', shouldShow);
+  });
 }
 
 function playSingingReference() {
@@ -817,6 +858,10 @@ function revealSingingAnswer() {
   document.getElementById('singing-judge-area').style.display = 'flex';
 
   updateSingingKeyboardLock(); // 鍵盤を解禁
+  // ★ 正解の鍵盤を緑で光らせる。次の問題に進むまで点いたままにして、
+  //   外した時にどの音だったかをすぐ確認できるようにする。
+  const ansBtn = getHighlightKeyForNote(singingTargetNote);
+  if (ansBtn) ansBtn.classList.add('singing-answer');
 }
 
 // ★ 自己判定
@@ -1766,7 +1811,7 @@ function beginGame() {
 function returnToStartScreen() {
   isTrainingMode = false; // ★ 特訓リザルトから戻った場合もここでモードを解除する
   isSingingMode = false;  // ★ 音声モードも解除
-  document.querySelectorAll('.key').forEach(el => el.classList.remove('singing-locked'));
+  document.querySelectorAll('.key').forEach(el => { el.classList.remove('singing-locked'); el.classList.remove('singing-answer'); });
   document.getElementById('singing-panel').style.display = 'none';
   document.getElementById('singing-stats-bar').style.display = 'none';
   document.getElementById('singing-settings').style.display = 'none';

@@ -393,6 +393,12 @@ button.action-btn { padding: 15px 30px; font-size: 1.2em; background-color: #e74
 .key.singing-locked { pointer-events: none; opacity: 0.45; filter: grayscale(0.5); }
 /* ★ ただし基準音のハイライトはロック中でもはっきり見えるようにする */
 .key.singing-locked.reference-highlight { opacity: 1; filter: none; }
+/* ★ 正解の鍵盤は緑で光らせ、次の問題まで点灯したままにする（外した音をすぐ確認できるように） */
+.key.singing-answer {
+  background: linear-gradient(180deg, #2ecc71, #27ae60) !important;
+  color: #fff !important;
+  box-shadow: 0 0 14px rgba(46,204,113,0.85) !important;
+}
 
 /* ==== ★ 初回のランキング送信を促すモーダル ==== */
 .first-submit-score {
